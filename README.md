@@ -36,3 +36,12 @@
 
 ```bash
 pip install -r requirements.txt
+
+```
+
+#### Windows
+
+```ps
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+.\install.ps1
+```

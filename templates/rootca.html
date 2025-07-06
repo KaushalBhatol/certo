@@ -1,0 +1,122 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h3>Root Certificate Authorities</h3>
+    <div>
+      <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#createModal">Create</button>
+      <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#importModal">Import</button>
+    </div>
+  </div>
+
+  {% for cert in certs %}
+  <div class="border rounded p-3 mb-3 bg-light">
+    <div class="d-flex justify-content-between align-items-center">
+      <div class="flex-grow-1">
+        <div class="fw-bold">{{ cert.name }}</div>
+        <div class="text-muted small">
+          Created: {{ cert.created }} &nbsp; | &nbsp; Expires: {{ cert.expires }}
+        </div>
+      </div>
+      <div class="dropdown ms-3">
+        <button class="btn btn-sm btn-light" type="button" id="dropdownMenu{{ loop.index }}" data-bs-toggle="dropdown"
+          aria-expanded="false">
+          &#8942;
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownMenu{{ loop.index }}">
+          <li><a class="dropdown-item" href="{{ url_for('export_cert', name=cert.name) }}">Export as ZIP</a></li>
+          <li><a class="dropdown-item" href="#">Reissue</a></li>
+          <li>
+            <button class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#deleteModal"
+              data-name="{{ cert.name }}">
+              Delete
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <p>No Root CAs available.</p>
+  {% endfor %}
+</div>
+
+<!-- Create Modal -->
+<div class="modal fade" id="createModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" method="POST" action="{{ url_for('create_rootca') }}">
+      <div class="modal-header">
+        <h5 class="modal-title">Create Root CA</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input name="name" class="form-control mb-2" placeholder="Name" required>
+        <select name="country" class="form-select mb-2" required>
+          <option value="">Select Country</option>
+          {% for code, name in countries %}
+          <option value="{{ code }}">{{ name }}</option>
+          {% endfor %}
+        </select>
+        <input name="org" class="form-control mb-2" placeholder="Organization" required>
+        <input name="common_name" class="form-control mb-2" placeholder="Common Name" required>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" type="submit">Generate</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" method="POST" action="{{ url_for('import_rootca') }}" enctype="multipart/form-data">
+      <div class="modal-header">
+        <h5 class="modal-title">Import Root CA</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input name="name" class="form-control mb-2" placeholder="Name" required>
+        <label class="form-label">Certificate (.pem)</label>
+        <input type="file" name="cert" class="form-control mb-2" required>
+        <label class="form-label">Private Key (.pem)</label>
+        <input type="file" name="key" class="form-control" required>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-success">Import</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Delete Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" method="POST" action="{{ url_for('delete_rootca') }}">
+      <div class="modal-header">
+        <h5 class="modal-title">Delete Root CA</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="name" id="delete-name-hidden">
+        <p>Please type <strong id="delete-name-confirm-label"></strong> to confirm deletion.</p>
+        <input type="text" name="confirm_name" class="form-control" required>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger">Confirm Delete</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  // Delete modal name autofill
+  const deleteModal = document.getElementById('deleteModal');
+  deleteModal.addEventListener('show.bs.modal', event => {
+    const button = event.relatedTarget;
+    const name = button.getAttribute('data-name');
+    document.getElementById('delete-name-hidden').value = name;
+    document.getElementById('delete-name-confirm-label').textContent = name;
+  });
+</script>
+{% endblock %}

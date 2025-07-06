@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Certo CA Manager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Bootstrap JS (bundle includes Popper) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <style>
+    body {
+      overflow: hidden;
+    }
+
+    .sidebar {
+      width: 250px;
+      background-color: #212529;
+      color: white;
+    }
+
+    .sidebar .nav-link {
+      color: #ccc;
+    }
+
+    .sidebar .nav-link:hover,
+    .sidebar .nav-link.active {
+      color: white;
+      background-color: #343a40;
+    }
+
+    .content-area {
+      overflow-y: auto;
+      padding: 2rem;
+      flex-grow: 1;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="d-flex vh-100">
+    <!-- Sidebar -->
+    <div class="sidebar p-3 d-flex flex-column">
+      <h4 class="text-white mb-3">Certo</h4>
+      <hr class="text-secondary">
+      <ul class="nav flex-column">
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'rootca' %}active{% endif %}" href="{{ url_for('rootca') }}">
+            Root CAs
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="{{ url_for('logout') }}">
+            Logout
+          </a>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Main Content -->
+    <div class="content-area bg-white position-relative">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="position-fixed top-0 end-0 p-3" style="z-index: 1055;">
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+    <div id="toastMessage" class="toast align-items-center show bg-warning text-dark border-0" role="alert"
+      aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body">{{ messages[0] }}</div>
+        <button type="button" class="btn-close btn-close-dark me-2 m-auto" data-bs-dismiss="toast"
+          aria-label="Close"></button>
+      </div>
+    </div>
+    {% endif %}
+    {% endwith %}
+  </div>
+
+  <!-- Auto-hide toast -->
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const toastEl = document.getElementById('toastMessage');
+      if (toastEl) {
+        setTimeout(() => {
+          const bsToast = bootstrap.Toast.getOrCreateInstance(toastEl);
+          bsToast.hide();
+        }, 5000);
+      }
+    });
+  </script>
+</body>
+
+</html>
