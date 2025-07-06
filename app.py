@@ -14,33 +14,19 @@ from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from utils.precheck import (
-    precheckes,
-    CERT_PATH,
-    KEY_PATH,
-    USER_FILE
-)
+from utils.precheck import precheckes, CERT_PATH, KEY_PATH, USER_FILE
 
 # Prechecks
 precheckes()
 
-
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-# ---------------------------
-# Force HTTPS Redirect
-# ---------------------------
 @app.before_request
 def redirect_http_to_https():
-    # Only redirect if running WITHOUT SSL and request is not secure
     if not request.is_secure and not app.debug and not request.host.startswith("localhost"):
         return redirect(request.url.replace("http://", "https://", 1), code=301)
 
-
-# ---------------------------
-# Role Based Access
-# ---------------------------
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -49,9 +35,6 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated
 
-# ---------------------------
-# Routes
-# ---------------------------
 @app.route("/")
 def home():
     if "username" not in session:
@@ -76,7 +59,6 @@ def login():
         flash("Invalid credentials")
     return render_template("login.html")
 
-
 @app.route("/logout")
 def logout():
     session.clear()
@@ -91,7 +73,7 @@ def import_rootca():
 
     if not cert or not key or not name:
         flash("Missing certificate, key, or name")
-        return redirect(url_for("home"))
+        return redirect(url_for("rootca"))
 
     safe_name = secure_filename(name)
     save_dir = os.path.join("data", "rootca", safe_name)
@@ -103,7 +85,6 @@ def import_rootca():
     cert.save(cert_path)
     key.save(key_path)
 
-    # Save metadata
     cert_file_path = os.path.join("data", "cert.json")
     certs = {"root_cas": []}
     if os.path.exists(cert_file_path):
@@ -121,7 +102,6 @@ def import_rootca():
     flash("Certificate imported")
     return redirect(url_for("rootca"))
 
-
 @app.route("/rootca/create", methods=["POST"])
 @admin_required
 def create_rootca():
@@ -129,6 +109,7 @@ def create_rootca():
     country = request.form.get("country", "US")
     org = request.form.get("org", "Certo")
     common_name = request.form.get("common_name", "localhost")
+    days = int(request.form.get("days") or 365)
 
     if not name:
         flash("Name required")
@@ -137,7 +118,6 @@ def create_rootca():
     save_dir = os.path.join("data", "rootca", secure_filename(name))
     os.makedirs(save_dir, exist_ok=True)
 
-    # Generate key + cert
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
     subject = issuer = x509.Name([
@@ -152,7 +132,7 @@ def create_rootca():
         .public_key(key.public_key()) \
         .serial_number(x509.random_serial_number()) \
         .not_valid_before(datetime.utcnow()) \
-        .not_valid_after(datetime.utcnow() + timedelta(days=3650)) \
+        .not_valid_after(datetime.utcnow() + timedelta(days=days)) \
         .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True) \
         .sign(key, hashes.SHA256())
 
@@ -169,7 +149,6 @@ def create_rootca():
             encryption_algorithm=serialization.NoEncryption()
         ))
 
-    # Store to cert.json
     cert_file_path = os.path.join("data", "cert.json")
     certs = {"root_cas": []}
     if os.path.exists(cert_file_path):
@@ -185,6 +164,46 @@ def create_rootca():
         json.dump(certs, f, indent=2)
 
     flash("New Root CA created")
+    return redirect(url_for("rootca"))
+
+@app.route("/rootca/reissue/<name>", methods=["POST"])
+@admin_required
+def reissue_rootca(name):
+    safe_name = secure_filename(name)
+    ca_dir = os.path.join("data", "rootca", safe_name)
+    key_path = os.path.join(ca_dir, "key.pem")
+    cert_path = os.path.join(ca_dir, "cert.pem")
+    days = int(request.form.get("days") or 365)
+
+    if not os.path.exists(key_path):
+        flash("Private key not found. Cannot reissue.")
+        return redirect(url_for("rootca"))
+
+    with open(key_path, "rb") as f:
+        key = serialization.load_pem_private_key(f.read(), password=None)
+
+    cert = x509.CertificateBuilder() \
+        .subject_name(x509.Name([
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Reissued Org"),
+            x509.NameAttribute(NameOID.COMMON_NAME, name),
+        ])) \
+        .issuer_name(x509.Name([
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Reissued Org"),
+            x509.NameAttribute(NameOID.COMMON_NAME, name),
+        ])) \
+        .public_key(key.public_key()) \
+        .serial_number(x509.random_serial_number()) \
+        .not_valid_before(datetime.utcnow()) \
+        .not_valid_after(datetime.utcnow() + timedelta(days=days)) \
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True) \
+        .sign(key, hashes.SHA256())
+
+    with open(cert_path, "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+
+    flash(f"Certificate for {name} reissued successfully")
     return redirect(url_for("rootca"))
 
 @app.route("/rootca", methods=["GET"])
@@ -258,8 +277,5 @@ def delete_rootca():
     flash(f"Deleted Root CA: {name}")
     return redirect(url_for("rootca"))
 
-# ---------------------------
-# Run the App with SSL
-# ---------------------------
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8080, ssl_context=(CERT_PATH, KEY_PATH))

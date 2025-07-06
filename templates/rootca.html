@@ -25,7 +25,12 @@
         </button>
         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownMenu{{ loop.index }}">
           <li><a class="dropdown-item" href="{{ url_for('export_cert', name=cert.name) }}">Export as ZIP</a></li>
-          <li><a class="dropdown-item" href="#">Reissue</a></li>
+          <li>
+            <button class="dropdown-item text-warning" data-bs-toggle="modal" data-bs-target="#reissueModal"
+              data-name="{{ cert.name }}">
+              Reissue
+            </button>
+          </li>
           <li>
             <button class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#deleteModal"
               data-name="{{ cert.name }}">
@@ -54,11 +59,13 @@
         <select name="country" class="form-select mb-2" required>
           <option value="">Select Country</option>
           {% for code, name in countries %}
-          <option value="{{ code }}">{{ name }}</option>
+          <option value="{{ code }}" {% if code=='IN' %}selected{% endif %}>{{ name }}</option>
           {% endfor %}
         </select>
+
         <input name="org" class="form-control mb-2" placeholder="Organization" required>
         <input name="common_name" class="form-control mb-2" placeholder="Common Name" required>
+        <input name="days" type="number" class="form-control mb-2" placeholder="Valid Days (default 365)">
       </div>
       <div class="modal-footer">
         <button class="btn btn-primary" type="submit">Generate</button>
@@ -109,14 +116,40 @@
   </div>
 </div>
 
+<!-- Reissue Modal -->
+<div class="modal fade" id="reissueModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" method="POST" id="reissue-form">
+      <div class="modal-header">
+        <h5 class="modal-title">Reissue Root CA</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Enter the number of days for the renewed certificate (default is 365):</p>
+        <input name="days" type="number" class="form-control mb-2" placeholder="Valid Days">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-warning">Reissue</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
-  // Delete modal name autofill
   const deleteModal = document.getElementById('deleteModal');
   deleteModal.addEventListener('show.bs.modal', event => {
     const button = event.relatedTarget;
     const name = button.getAttribute('data-name');
     document.getElementById('delete-name-hidden').value = name;
     document.getElementById('delete-name-confirm-label').textContent = name;
+  });
+
+  const reissueModal = document.getElementById('reissueModal');
+  reissueModal.addEventListener('show.bs.modal', event => {
+    const button = event.relatedTarget;
+    const name = button.getAttribute('data-name');
+    const form = document.getElementById('reissue-form');
+    form.action = `/rootca/reissue/${encodeURIComponent(name)}`;
   });
 </script>
 {% endblock %}
