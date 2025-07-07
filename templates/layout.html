@@ -74,8 +74,18 @@
       <hr class="text-secondary">
       <ul class="nav flex-column">
         <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'home' %}active{% endif %}" href="{{ url_for('home') }}">
+            Home
+          </a>
+        </li>
+        <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'rootca' %}active{% endif %}" href="{{ url_for('rootca') }}">
-            Root CAs
+            Certificate Authorities
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'ssl_page' %}active{% endif %}" href="{{ url_for('ssl_page') }}">
+            SSL Certificates
           </a>
         </li>
       </ul>

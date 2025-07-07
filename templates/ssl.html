@@ -1,0 +1,158 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h3>SSL Certificates</h3>
+    <div>
+      <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#createModal">Create</button>
+      <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#importModal">Import</button>
+    </div>
+  </div>
+
+  {% for cert in certs %}
+  <div class="border rounded p-3 mb-3 bg-light">
+    <div class="d-flex justify-content-between align-items-center">
+      <div class="flex-grow-1">
+        <div class="fw-bold">{{ cert.name }}</div>
+        <div class="text-muted small">
+          Signed By: {{ cert.root_ca }} &nbsp;|&nbsp;
+          Created: {{ cert.created }} &nbsp;|&nbsp;
+          Expires: {{ cert.expires }}
+        </div>
+      </div>
+      <div class="dropdown ms-3">
+        <button class="btn btn-sm btn-light" type="button" data-bs-toggle="dropdown">
+          &#8942;
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><a class="dropdown-item" href="{{ url_for('export_ssl', name=cert.name) }}">Export as ZIP</a></li>
+          <li><button class="dropdown-item text-warning" data-bs-toggle="modal" data-bs-target="#reissueModal"
+              data-name="{{ cert.name }}">Reissue</button></li>
+          <li><button class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#deleteModal"
+              data-name="{{ cert.name }}">Delete</button></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <p>No SSL certificates available.</p>
+  {% endfor %}
+</div>
+
+<!-- Create Modal -->
+<div class="modal fade" id="createModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" method="POST" action="{{ url_for('create_ssl') }}">
+      <div class="modal-header">
+        <h5 class="modal-title">Create SSL Certificate</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input name="name" class="form-control mb-2" placeholder="Certificate Name" required>
+        <input name="common_name" class="form-control mb-2" placeholder="Common Name (e.g. example.com)" required>
+        <input name="org" class="form-control mb-2" placeholder="Organization" required>
+
+        <select name="country" class="form-select mb-2" required>
+          <option value="">Select Country</option>
+          {% for code, name in countries %}
+          <option value="{{ code }}" {% if code=='IN' %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+
+        <input name="days" type="number" class="form-control mb-2" placeholder="Valid Days (default 365)">
+
+        <select name="root_ca" class="form-select mb-2" required>
+          <option value="">Select Root CA to Sign</option>
+          {% for ca in rootcas %}
+          <option value="{{ ca.name }}">{{ ca.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" type="submit">Generate</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" method="POST" action="{{ url_for('import_ssl') }}" enctype="multipart/form-data">
+      <div class="modal-header">
+        <h5 class="modal-title">Import SSL Certificate</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input name="name" class="form-control mb-2" placeholder="Name" required>
+        <label class="form-label">Certificate (.pem)</label>
+        <input type="file" name="cert" class="form-control mb-2" required>
+        <label class="form-label">Private Key (.pem)</label>
+        <input type="file" name="key" class="form-control mb-2" required>
+        <label class="form-label">Signed By (Root CA Name)</label>
+        <input name="root_ca" class="form-control" placeholder="Root CA Name" required>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-success">Import</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Delete Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" method="POST" action="{{ url_for('delete_ssl') }}">
+      <div class="modal-header">
+        <h5 class="modal-title">Delete SSL Certificate</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="name" id="delete-ssl-name-hidden">
+        <p>Please type <strong id="delete-ssl-name-confirm-label"></strong> to confirm deletion.</p>
+        <input type="text" name="confirm_name" class="form-control" required>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger">Confirm Delete</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Reissue Modal -->
+<div class="modal fade" id="reissueModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" method="POST" id="reissue-ssl-form">
+      <div class="modal-header">
+        <h5 class="modal-title">Reissue SSL Certificate</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Enter the number of days for the new certificate validity:</p>
+        <input name="days" type="number" class="form-control mb-2" placeholder="Valid Days (e.g. 365)">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-warning">Reissue</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  const deleteModal = document.getElementById('deleteModal');
+  deleteModal.addEventListener('show.bs.modal', event => {
+    const button = event.relatedTarget;
+    const name = button.getAttribute('data-name');
+    document.getElementById('delete-ssl-name-hidden').value = name;
+    document.getElementById('delete-ssl-name-confirm-label').textContent = name;
+  });
+
+  const reissueModal = document.getElementById('reissueModal');
+  reissueModal.addEventListener('show.bs.modal', event => {
+    const button = event.relatedTarget;
+    const name = button.getAttribute('data-name');
+    const form = document.getElementById('reissue-ssl-form');
+    form.action = `/ssl/reissue/${encodeURIComponent(name)}`;
+  });
+</script>
+{% endblock %}
