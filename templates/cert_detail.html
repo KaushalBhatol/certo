@@ -16,10 +16,18 @@
       </span>
     </p>
   </div>
-  <a href="{{ export_url }}" style="background:#fff; border:1px solid #e2e8f0; color:#0f172a; border-radius:8px; padding:0.5rem 1.1rem; font-size:0.85rem; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:0.4rem;">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-    Export ZIP
-  </a>
+  <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+    {% for label, _ in pem_files.items() %}
+    <button onclick="openPemViewer('{{ label }}')" style="background:#fff; border:1px solid #e2e8f0; color:#0f172a; border-radius:8px; padding:0.5rem 1.1rem; font-size:0.85rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:0.4rem;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      {{ label }}
+    </button>
+    {% endfor %}
+    <a href="{{ export_url }}" style="background:#fff; border:1px solid #e2e8f0; color:#0f172a; border-radius:8px; padding:0.5rem 1.1rem; font-size:0.85rem; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:0.4rem;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export ZIP
+    </a>
+  </div>
 </div>
 
 <div class="row g-3">
@@ -182,5 +190,55 @@
   {% endif %}
 
 </div>
+
+<!-- PEM Viewer Modal -->
+<div class="modal fade" id="pemModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header" style="align-items:center;">
+        <h5 class="modal-title" id="pemModalTitle" style="font-family:monospace; font-size:0.95rem;"></h5>
+        <div style="display:flex; align-items:center; gap:0.5rem; margin-left:auto;">
+          <button id="pemCopyBtn" onclick="copyPem()" style="background:#6366f1; color:#fff; border:none; border-radius:7px; padding:0.35rem 0.85rem; font-size:0.8rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:0.35rem;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy
+          </button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+      </div>
+      <div class="modal-body" style="padding:0;">
+        <pre id="pemContent" style="margin:0; padding:1.25rem 1.5rem; font-size:0.78rem; line-height:1.6; color:#e2e8f0; background:#0f172a; border-radius:0; white-space:pre-wrap; word-break:break-all; min-height:200px;"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const pemData = {{ pem_files | tojson }};
+
+  function openPemViewer(label) {
+    document.getElementById('pemModalTitle').textContent = label;
+    document.getElementById('pemContent').textContent = pemData[label] || '';
+    document.getElementById('pemCopyBtn').textContent = 'Copy';
+    document.getElementById('pemCopyBtn').style.background = '#6366f1';
+    // re-add icon
+    document.getElementById('pemCopyBtn').innerHTML = `
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copy`;
+    new bootstrap.Modal(document.getElementById('pemModal')).show();
+  }
+
+  function copyPem() {
+    const content = document.getElementById('pemContent').textContent;
+    navigator.clipboard.writeText(content).then(() => {
+      const btn = document.getElementById('pemCopyBtn');
+      btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Copied!`;
+      btn.style.background = '#16a34a';
+      setTimeout(() => {
+        btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`;
+        btn.style.background = '#6366f1';
+      }, 2000);
+    });
+  }
+</script>
 
 {% endblock %}

@@ -538,15 +538,20 @@ def rootca():
 @admin_required
 def view_rootca(name):
     safe_name = secure_filename(name)
-    cert_path = os.path.join("data", "rootca", safe_name, "cert.pem")
+    ca_dir = os.path.join("data", "rootca", safe_name)
+    cert_path = os.path.join(ca_dir, "cert.pem")
+    key_path  = os.path.join(ca_dir, "key.pem")
     if not os.path.exists(cert_path):
         flash("Certificate not found.", "error")
         return redirect(url_for("rootca"))
     with open(cert_path, "rb") as f:
         cert_obj = x509.load_pem_x509_certificate(f.read())
     details = _cert_details(cert_obj)
+    pem_files = {"Certificate": open(cert_path).read()}
+    if os.path.exists(key_path):
+        pem_files["Private Key"] = open(key_path).read()
     return render_template("cert_detail.html", name=name, cert_type="Root CA",
-                           details=details,
+                           details=details, pem_files=pem_files,
                            back_url=url_for("rootca"),
                            export_url=url_for("export_cert", name=name))
 
@@ -659,8 +664,10 @@ def ssl_page():
 def view_ssl(name):
     safe_name = secure_filename(name)
     ssl_dir = os.path.join("data", "ssl", safe_name)
-    cert_path = os.path.join(ssl_dir, "cert.pem")
-    meta_path = os.path.join(ssl_dir, "meta.txt")
+    cert_path      = os.path.join(ssl_dir, "cert.pem")
+    key_path       = os.path.join(ssl_dir, "key.pem")
+    fullchain_path = os.path.join(ssl_dir, "fullchain.pem")
+    meta_path      = os.path.join(ssl_dir, "meta.txt")
     if not os.path.exists(cert_path):
         flash("Certificate not found.", "error")
         return redirect(url_for("ssl_page"))
@@ -672,8 +679,13 @@ def view_ssl(name):
             root_ca = f.read().strip()
     details = _cert_details(cert_obj)
     details["root_ca"] = root_ca
+    pem_files = {"Certificate": open(cert_path).read()}
+    if os.path.exists(key_path):
+        pem_files["Private Key"] = open(key_path).read()
+    if os.path.exists(fullchain_path):
+        pem_files["Full Chain"] = open(fullchain_path).read()
     return render_template("cert_detail.html", name=name, cert_type="SSL Certificate",
-                           details=details,
+                           details=details, pem_files=pem_files,
                            back_url=url_for("ssl_page"),
                            export_url=url_for("export_ssl", name=name))
 
