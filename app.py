@@ -49,6 +49,62 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def _cert_details(cert_obj):
+    """Return a dict of human-readable fields from an x509 cert object."""
+    def attr(name_obj, oid):
+        a = name_obj.get_attributes_for_oid(oid)
+        return a[0].value if a else ""
+
+    # SANs
+    sans = []
+    try:
+        san_ext = cert_obj.extensions.get_extension_for_class(x509.SubjectAlternativeName)
+        for n in san_ext.value:
+            sans.append(str(n.value))
+    except x509.ExtensionNotFound:
+        pass
+
+    # Key usage
+    key_usage = []
+    try:
+        ku = cert_obj.extensions.get_extension_for_class(x509.KeyUsage).value
+        for flag in ["digital_signature","content_commitment","key_encipherment",
+                     "data_encipherment","key_agreement","key_cert_sign","crl_sign"]:
+            if getattr(ku, flag):
+                key_usage.append(flag.replace("_", " ").title())
+    except x509.ExtensionNotFound:
+        pass
+
+    # Extended key usage
+    eku = []
+    try:
+        for oid in cert_obj.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value:
+            eku.append(oid._name if hasattr(oid, '_name') else oid.dotted_string)
+    except x509.ExtensionNotFound:
+        pass
+
+    pub = cert_obj.public_key()
+    key_size = pub.key_size if hasattr(pub, "key_size") else "—"
+
+    return {
+        "cn":       attr(cert_obj.subject, NameOID.COMMON_NAME),
+        "o":        attr(cert_obj.subject, NameOID.ORGANIZATION_NAME),
+        "ou":       attr(cert_obj.subject, NameOID.ORGANIZATIONAL_UNIT_NAME),
+        "c":        attr(cert_obj.subject, NameOID.COUNTRY_NAME),
+        "st":       attr(cert_obj.subject, NameOID.STATE_OR_PROVINCE_NAME),
+        "l":        attr(cert_obj.subject, NameOID.LOCALITY_NAME),
+        "issuer_cn": attr(cert_obj.issuer, NameOID.COMMON_NAME),
+        "issuer_o":  attr(cert_obj.issuer, NameOID.ORGANIZATION_NAME),
+        "serial":   format(cert_obj.serial_number, "x").upper(),
+        "not_before": cert_obj.not_valid_before_utc.strftime("%Y-%m-%d %H:%M UTC"),
+        "not_after":  cert_obj.not_valid_after_utc.strftime("%Y-%m-%d %H:%M UTC"),
+        "key_size": key_size,
+        "algorithm": "RSA",
+        "sans":     sans,
+        "key_usage": key_usage,
+        "eku":      eku,
+    }
+
 def _days_until(expiry_date_str, fallback=365):
     """Convert a YYYY-MM-DD expiry date string to days from now."""
     try:
@@ -61,7 +117,52 @@ def _days_until(expiry_date_str, fallback=365):
 def home():
     if "username" not in session:
         return redirect(url_for("login"))
-    return render_template("home.html")
+
+    conn = get_db()
+    ca_rows = conn.execute("SELECT * FROM root_cas").fetchall()
+    conn.close()
+
+    ca_count = len(ca_rows)
+    ssl_count = 0
+    expiring = []
+    now = datetime.now(timezone.utc)
+    warn_threshold = now + timedelta(days=30)
+
+    # Count SSL certs and find expiring ones
+    ssl_dir = os.path.join("data", "ssl")
+    if os.path.exists(ssl_dir):
+        for entry in os.listdir(ssl_dir):
+            cert_path = os.path.join(ssl_dir, entry, "cert.pem")
+            if not os.path.exists(cert_path):
+                continue
+            ssl_count += 1
+            with open(cert_path, "rb") as f:
+                c = x509.load_pem_x509_certificate(f.read())
+            if c.not_valid_after_utc <= warn_threshold:
+                expiring.append({
+                    "name": entry, "type": "SSL",
+                    "expires": c.not_valid_after_utc.strftime("%Y-%m-%d"),
+                    "expired": c.not_valid_after_utc <= now,
+                })
+
+    # Check Root CA expiry too
+    for row in ca_rows:
+        cert_path = os.path.join(row["path"], "cert.pem")
+        if not os.path.exists(cert_path):
+            continue
+        with open(cert_path, "rb") as f:
+            c = x509.load_pem_x509_certificate(f.read())
+        if c.not_valid_after_utc <= warn_threshold:
+            expiring.append({
+                "name": row["name"], "type": "Root CA",
+                "expires": c.not_valid_after_utc.strftime("%Y-%m-%d"),
+                "expired": c.not_valid_after_utc <= now,
+            })
+
+    expiring.sort(key=lambda x: x["expires"])
+
+    return render_template("home.html",
+        ca_count=ca_count, ssl_count=ssl_count, expiring=expiring)
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -422,14 +523,32 @@ def rootca():
         if os.path.exists(cert_path):
             with open(cert_path, "rb") as f:
                 cert_data = x509.load_pem_x509_certificate(f.read())
-                certs.append({
-                    "name": cert["name"],
-                    "path": cert["path"],
-                    "created": cert_data.not_valid_before_utc.strftime("%Y-%m-%d"),
-                    "expires": cert_data.not_valid_after_utc.strftime("%Y-%m-%d")
-                })
+            details = _cert_details(cert_data)
+            certs.append({
+                "name": cert["name"],
+                "path": cert["path"],
+                "created": cert_data.not_valid_before_utc.strftime("%Y-%m-%d"),
+                "expires": cert_data.not_valid_after_utc.strftime("%Y-%m-%d"),
+                "details": details,
+            })
 
     return render_template("rootca.html", certs=certs, countries=countries)
+
+@app.route("/rootca/view/<name>")
+@admin_required
+def view_rootca(name):
+    safe_name = secure_filename(name)
+    cert_path = os.path.join("data", "rootca", safe_name, "cert.pem")
+    if not os.path.exists(cert_path):
+        flash("Certificate not found.", "error")
+        return redirect(url_for("rootca"))
+    with open(cert_path, "rb") as f:
+        cert_obj = x509.load_pem_x509_certificate(f.read())
+    details = _cert_details(cert_obj)
+    return render_template("cert_detail.html", name=name, cert_type="Root CA",
+                           details=details,
+                           back_url=url_for("rootca"),
+                           export_url=url_for("export_cert", name=name))
 
 @app.route("/rootca/export/<name>")
 @admin_required
@@ -524,14 +643,39 @@ def ssl_page():
                     with open(meta_path, "r") as f:
                         root_ca_name = f.read().strip()
 
+                details = _cert_details(cert_obj)
                 certs.append({
                     "name": name,
                     "created": cert_obj.not_valid_before_utc.strftime("%Y-%m-%d"),
                     "expires": cert_obj.not_valid_after_utc.strftime("%Y-%m-%d"),
-                    "root_ca": root_ca_name or "Unknown"
+                    "root_ca": root_ca_name or "Unknown",
+                    "details": details,
                 })
 
     return render_template("ssl.html", rootcas=rootcas, certs=certs)
+
+@app.route("/ssl/view/<name>")
+@login_required
+def view_ssl(name):
+    safe_name = secure_filename(name)
+    ssl_dir = os.path.join("data", "ssl", safe_name)
+    cert_path = os.path.join(ssl_dir, "cert.pem")
+    meta_path = os.path.join(ssl_dir, "meta.txt")
+    if not os.path.exists(cert_path):
+        flash("Certificate not found.", "error")
+        return redirect(url_for("ssl_page"))
+    with open(cert_path, "rb") as f:
+        cert_obj = x509.load_pem_x509_certificate(f.read())
+    root_ca = ""
+    if os.path.exists(meta_path):
+        with open(meta_path) as f:
+            root_ca = f.read().strip()
+    details = _cert_details(cert_obj)
+    details["root_ca"] = root_ca
+    return render_template("cert_detail.html", name=name, cert_type="SSL Certificate",
+                           details=details,
+                           back_url=url_for("ssl_page"),
+                           export_url=url_for("export_ssl", name=name))
 
 @app.route("/ssl/create", methods=["POST"])
 @login_required

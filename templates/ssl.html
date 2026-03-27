@@ -24,7 +24,7 @@
       <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7z"/>
     </svg>
   </div>
-  <div style="flex:1; min-width:0;">
+  <a href="{{ url_for('view_ssl', name=cert.name) }}" style="flex:1; min-width:0; text-decoration:none; color:inherit;">
     <div class="cert-name">{{ cert.name }}</div>
     <div class="cert-meta">
       <span>Signed by: <strong style="color:#6366f1;">{{ cert.root_ca }}</strong></span>
@@ -34,7 +34,7 @@
       <span>Expires: {{ cert.expires }}</span>
       <span class="badge-valid">SSL</span>
     </div>
-  </div>
+  </a>
   <div class="dropdown">
     <button class="btn-icon" type="button" data-bs-toggle="dropdown" aria-expanded="false">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -94,9 +94,6 @@
               data-ou="{{ ca.ou }}">{{ ca.name }}</option>
             {% endfor %}
           </select>
-        </div>
-        <div id="ssl-ca-preview" style="display:none; background:#0f172a; border:1px solid #334155; border-radius:8px; padding:0.6rem 0.85rem; font-size:0.8rem; color:#94a3b8; display:none;">
-          <span id="ssl-ca-preview-text"></span>
         </div>
         <div>
           <label class="form-label">Certificate Name</label>
@@ -165,8 +162,13 @@
           <input type="file" name="key" class="form-control" required>
         </div>
         <div>
-          <label class="form-label">Signed By (Root CA Name)</label>
-          <input name="root_ca" class="form-control" placeholder="Root CA name" required>
+          <label class="form-label">Signed By (Root CA)</label>
+          <select name="root_ca" class="form-select" required>
+            <option value="">Select Root CA</option>
+            {% for ca in rootcas %}
+            <option value="{{ ca.name }}">{{ ca.name }}</option>
+            {% endfor %}
+          </select>
         </div>
       </div>
       <div class="modal-footer">
@@ -260,16 +262,6 @@
       const opt = caSelect.options[caSelect.selectedIndex];
       const preview = document.getElementById('ssl-ca-preview');
       const previewText = document.getElementById('ssl-ca-preview-text');
-      const fields = [
-        opt.dataset.country, opt.dataset.state, opt.dataset.locality,
-        opt.dataset.org, opt.dataset.ou
-      ].filter(Boolean);
-      if (opt.value && fields.length) {
-        previewText.textContent = `Subject fields inherited from CA: ${fields.join(' · ')}`;
-        preview.style.display = 'block';
-      } else {
-        preview.style.display = 'none';
-      }
     });
   }
 </script>

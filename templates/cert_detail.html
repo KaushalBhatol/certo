@@ -1,0 +1,186 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="page-header d-flex justify-content-between align-items-start">
+  <div>
+    <a href="{{ back_url }}" style="display:inline-flex; align-items:center; gap:0.35rem; font-size:0.8rem; color:#64748b; text-decoration:none; margin-bottom:0.6rem;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      Back
+    </a>
+    <h3 style="margin-bottom:0.2rem;">{{ name }}</h3>
+    <p>
+      <span style="font-size:0.75rem; font-weight:600; padding:0.2rem 0.65rem; border-radius:999px;
+        background:{% if cert_type == 'Root CA' %}#eef2ff{% else %}#f0fdf4{% endif %};
+        color:{% if cert_type == 'Root CA' %}#6366f1{% else %}#16a34a{% endif %};">
+        {{ cert_type }}
+      </span>
+    </p>
+  </div>
+  <a href="{{ export_url }}" style="background:#fff; border:1px solid #e2e8f0; color:#0f172a; border-radius:8px; padding:0.5rem 1.1rem; font-size:0.85rem; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:0.4rem;">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Export ZIP
+  </a>
+</div>
+
+<div class="row g-3">
+
+  <!-- Subject -->
+  <div class="col-12 col-lg-6">
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; height:100%;">
+      <div style="padding:1rem 1.25rem; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; gap:0.6rem;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span style="font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#374151;">Subject</span>
+      </div>
+      <div style="padding:1.1rem 1.25rem;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+          {% macro row(label, value) %}
+          {% if value %}
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:0.5rem 1rem 0.5rem 0; color:#64748b; font-weight:600; white-space:nowrap; width:150px;">{{ label }}</td>
+            <td style="padding:0.5rem 0; color:#0f172a; word-break:break-all;">{{ value }}</td>
+          </tr>
+          {% endif %}
+          {% endmacro %}
+          {{ row("Common Name", details.cn) }}
+          {{ row("Organization", details.o) }}
+          {{ row("Org Unit", details.ou) }}
+          {{ row("Country", details.c) }}
+          {{ row("State / Province", details.st) }}
+          {{ row("Locality", details.l) }}
+          {% if details.root_ca is defined and details.root_ca %}
+          {{ row("Signed By", details.root_ca) }}
+          {% endif %}
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Issuer -->
+  <div class="col-12 col-lg-6">
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; height:100%;">
+      <div style="padding:1rem 1.25rem; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; gap:0.6rem;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span style="font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#374151;">Issuer</span>
+      </div>
+      <div style="padding:1.1rem 1.25rem;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+          {% if details.issuer_cn %}
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:0.5rem 1rem 0.5rem 0; color:#64748b; font-weight:600; white-space:nowrap; width:150px;">Common Name</td>
+            <td style="padding:0.5rem 0; color:#0f172a;">{{ details.issuer_cn }}</td>
+          </tr>
+          {% endif %}
+          {% if details.issuer_o %}
+          <tr>
+            <td style="padding:0.5rem 1rem 0.5rem 0; color:#64748b; font-weight:600; white-space:nowrap;">Organization</td>
+            <td style="padding:0.5rem 0; color:#0f172a;">{{ details.issuer_o }}</td>
+          </tr>
+          {% endif %}
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Validity -->
+  <div class="col-12 col-lg-6">
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
+      <div style="padding:1rem 1.25rem; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; gap:0.6rem;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span style="font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#374151;">Validity Period</span>
+      </div>
+      <div style="padding:1.1rem 1.25rem;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:0.5rem 1rem 0.5rem 0; color:#64748b; font-weight:600; white-space:nowrap; width:150px;">Not Before</td>
+            <td style="padding:0.5rem 0; color:#0f172a;">{{ details.not_before }}</td>
+          </tr>
+          <tr>
+            <td style="padding:0.5rem 1rem 0.5rem 0; color:#64748b; font-weight:600; white-space:nowrap;">Not After</td>
+            <td style="padding:0.5rem 0; font-weight:600; color:#0f172a;">{{ details.not_after }}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Technical -->
+  <div class="col-12 col-lg-6">
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
+      <div style="padding:1rem 1.25rem; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; gap:0.6rem;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        <span style="font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#374151;">Technical</span>
+      </div>
+      <div style="padding:1.1rem 1.25rem;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:0.5rem 1rem 0.5rem 0; color:#64748b; font-weight:600; white-space:nowrap; width:150px;">Algorithm</td>
+            <td style="padding:0.5rem 0; color:#0f172a;">{{ details.algorithm }}</td>
+          </tr>
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:0.5rem 1rem 0.5rem 0; color:#64748b; font-weight:600; white-space:nowrap;">Key Size</td>
+            <td style="padding:0.5rem 0; color:#0f172a;">{{ details.key_size }}-bit</td>
+          </tr>
+          <tr>
+            <td style="padding:0.5rem 1rem 0.5rem 0; color:#64748b; font-weight:600; white-space:nowrap;">Serial Number</td>
+            <td style="padding:0.5rem 0; color:#0f172a; font-family:monospace; font-size:0.8rem; word-break:break-all;">{{ details.serial }}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Subject Alternative Names (SSL only) -->
+  {% if details.sans %}
+  <div class="col-12">
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
+      <div style="padding:1rem 1.25rem; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; gap:0.6rem;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <span style="font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#374151;">Subject Alternative Names</span>
+        <span style="font-size:0.72rem; color:#94a3b8; margin-left:auto;">{{ details.sans | length }} entr{{ 'y' if details.sans|length == 1 else 'ies' }}</span>
+      </div>
+      <div style="padding:1.1rem 1.25rem; display:flex; flex-wrap:wrap; gap:0.45rem;">
+        {% for san in details.sans %}
+        <span style="background:#f0fdf4; border:1px solid #bbf7d0; color:#15803d; font-size:0.8rem; font-weight:600; padding:0.25rem 0.7rem; border-radius:999px; font-family:monospace;">{{ san }}</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Extensions -->
+  {% if details.key_usage or details.eku %}
+  <div class="col-12">
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
+      <div style="padding:1rem 1.25rem; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; gap:0.6rem;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        <span style="font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#374151;">Extensions</span>
+      </div>
+      <div style="padding:1.1rem 1.25rem; display:flex; flex-direction:column; gap:0.85rem;">
+        {% if details.key_usage %}
+        <div>
+          <div style="font-size:0.75rem; color:#94a3b8; font-weight:600; margin-bottom:0.45rem;">Key Usage</div>
+          <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+            {% for ku in details.key_usage %}
+            <span style="background:#eef2ff; color:#6366f1; font-size:0.78rem; font-weight:600; padding:0.25rem 0.7rem; border-radius:999px;">{{ ku }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        {% if details.eku %}
+        <div>
+          <div style="font-size:0.75rem; color:#94a3b8; font-weight:600; margin-bottom:0.45rem;">Extended Key Usage</div>
+          <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+            {% for e in details.eku %}
+            <span style="background:#fff7ed; color:#ea580c; font-size:0.78rem; font-weight:600; padding:0.25rem 0.7rem; border-radius:999px;">{{ e }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+{% endblock %}

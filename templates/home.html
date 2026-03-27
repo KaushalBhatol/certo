@@ -3,9 +3,10 @@
 
 <div class="page-header">
   <h3>Dashboard</h3>
-  <p>Welcome back, {{ session['username'] }}. Manage your certificates below.</p>
+  <p>Welcome back, {{ session['username'] }}. Here's your certificate overview.</p>
 </div>
 
+<!-- Stat Cards -->
 <div class="row g-3 mb-4">
   <div class="col-md-4">
     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:1.25rem 1.5rem;">
@@ -17,10 +18,11 @@
         </div>
         <span style="font-size:0.8rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:0.06em;">Root CAs</span>
       </div>
-      <div style="font-size:1.75rem; font-weight:700; color:#0f172a; line-height:1;">—</div>
-      <div style="font-size:0.78rem; color:#94a3b8; margin-top:0.25rem;">Certificate Authorities</div>
+      <div style="font-size:1.75rem; font-weight:700; color:#0f172a; line-height:1;">{{ ca_count }}</div>
+      <div style="font-size:0.78rem; color:#94a3b8; margin-top:0.25rem;">Certificate Authorit{{ 'y' if ca_count == 1 else 'ies' }}</div>
     </div>
   </div>
+
   <div class="col-md-4">
     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:1.25rem 1.5rem;">
       <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
@@ -31,34 +33,84 @@
         </div>
         <span style="font-size:0.8rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:0.06em;">SSL Certs</span>
       </div>
-      <div style="font-size:1.75rem; font-weight:700; color:#0f172a; line-height:1;">—</div>
-      <div style="font-size:0.78rem; color:#94a3b8; margin-top:0.25rem;">Issued Certificates</div>
+      <div style="font-size:1.75rem; font-weight:700; color:#0f172a; line-height:1;">{{ ssl_count }}</div>
+      <div style="font-size:0.78rem; color:#94a3b8; margin-top:0.25rem;">Issued Certificate{{ 's' if ssl_count != 1 else '' }}</div>
     </div>
   </div>
+
   <div class="col-md-4">
-    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:1.25rem 1.5rem;">
+    <div style="background:#fff; border:1px solid {% if expiring %}#fee2e2{% else %}#e2e8f0{% endif %}; border-radius:12px; padding:1.25rem 1.5rem;">
       <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
-        <div style="width:38px; height:38px; background:#fff7ed; border-radius:10px; display:flex; align-items:center; justify-content:center;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        <div style="width:38px; height:38px; background:{% if expiring %}#fef2f2{% else %}#f0fdf4{% endif %}; border-radius:10px; display:flex; align-items:center; justify-content:center;">
+          {% if expiring %}
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
           </svg>
+          {% else %}
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          {% endif %}
         </div>
-        <span style="font-size:0.8rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:0.06em;">Status</span>
+        <span style="font-size:0.8rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:0.06em;">Expiring Soon</span>
       </div>
-      <div style="font-size:1.75rem; font-weight:700; color:#16a34a; line-height:1;">Active</div>
-      <div style="font-size:0.78rem; color:#94a3b8; margin-top:0.25rem;">System operational</div>
+      <div style="font-size:1.75rem; font-weight:700; color:{% if expiring %}#dc2626{% else %}#16a34a{% endif %}; line-height:1;">{{ expiring | length }}</div>
+      <div style="font-size:0.78rem; color:#94a3b8; margin-top:0.25rem;">
+        {% if expiring %}Cert{{ 's' if expiring|length != 1 else '' }} expiring within 30 days{% else %}All certificates valid{% endif %}
+      </div>
     </div>
   </div>
 </div>
 
+<!-- Expiring Soon Table -->
+{% if expiring %}
+<div style="background:#fff; border:1px solid #fee2e2; border-radius:12px; padding:1.5rem; margin-bottom:1.5rem;">
+  <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:1rem;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+    <h6 style="font-weight:700; color:#991b1b; margin:0;">Attention Required</h6>
+  </div>
+  <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+    <thead>
+      <tr style="border-bottom:1px solid #fee2e2;">
+        <th style="text-align:left; padding:0.4rem 0.75rem 0.6rem 0; color:#64748b; font-weight:600; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.04em;">Name</th>
+        <th style="text-align:left; padding:0.4rem 0.75rem 0.6rem; color:#64748b; font-weight:600; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.04em;">Type</th>
+        <th style="text-align:left; padding:0.4rem 0 0.6rem; color:#64748b; font-weight:600; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.04em;">Expires</th>
+        <th style="text-align:right; padding:0.4rem 0 0.6rem; color:#64748b; font-weight:600; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.04em;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in expiring %}
+      <tr style="border-bottom:1px solid #fecaca;">
+        <td style="padding:0.55rem 0.75rem 0.55rem 0; font-weight:600; color:#0f172a;">{{ item.name }}</td>
+        <td style="padding:0.55rem 0.75rem;">
+          <span style="font-size:0.72rem; font-weight:600; padding:0.2rem 0.55rem; border-radius:999px; background:{% if item.type == 'Root CA' %}#eef2ff{% else %}#f0fdf4{% endif %}; color:{% if item.type == 'Root CA' %}#6366f1{% else %}#16a34a{% endif %};">{{ item.type }}</span>
+        </td>
+        <td style="padding:0.55rem 0; color:{% if item.expired %}#dc2626{% else %}#dc2626{% endif %}; font-weight:600;">
+          {{ item.expires }}{% if item.expired %} <span style="font-size:0.72rem;">(expired)</span>{% endif %}
+        </td>
+        <td style="padding:0.55rem 0; text-align:right;">
+          <a href="{{ url_for('rootca') if item.type == 'Root CA' else url_for('ssl_page') }}" style="font-size:0.78rem; color:#6366f1; text-decoration:none; font-weight:600;">Reissue →</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- Quick Actions -->
 <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:1.5rem;">
-  <h6 style="font-weight:700; color:#0f172a; margin-bottom:0.5rem;">Quick Actions</h6>
-  <p style="font-size:0.85rem; color:#64748b; margin-bottom:1.25rem;">Get started by creating a Root CA, then issue SSL certificates signed by it.</p>
+  <h6 style="font-weight:700; color:#0f172a; margin-bottom:0.4rem;">Quick Actions</h6>
+  <p style="font-size:0.85rem; color:#64748b; margin-bottom:1.25rem;">Create a Root CA first, then issue SSL certificates signed by it.</p>
   <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
-    <a href="{{ url_for('rootca') }}" class="btn btn-accent" style="background:#6366f1; color:#fff; border:none; border-radius:8px; padding:0.5rem 1.1rem; font-size:0.85rem; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:0.4rem;">
+    {% if session.get('role') == 'admin' %}
+    <a href="{{ url_for('rootca') }}" style="background:#6366f1; color:#fff; border:none; border-radius:8px; padding:0.5rem 1.1rem; font-size:0.85rem; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:0.4rem;">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       New Root CA
     </a>
+    {% endif %}
     <a href="{{ url_for('ssl_page') }}" style="background:#fff; border:1px solid #e2e8f0; color:#0f172a; border-radius:8px; padding:0.5rem 1.1rem; font-size:0.85rem; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:0.4rem;">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       New SSL Certificate
