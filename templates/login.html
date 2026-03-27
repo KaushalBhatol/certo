@@ -3,7 +3,8 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Login — Certo</title>
+  <title>Login — {% if branding and branding.org_name %}{{ branding.org_name }}{% else %}CERTO{% endif %}</title>
+  <link rel="icon" type="{% if branding and branding.logo_path %}image/*{% else %}image/svg+xml{% endif %}" href="{% if branding and branding.logo_path %}{{ url_for('branding_logo') }}{% else %}{{ url_for('static', filename='favicon.svg') }}{% endif %}">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
   <style>
@@ -152,12 +153,16 @@
 <body>
   <div class="login-wrap">
     <div class="brand">
-      <div class="brand-icon">
+      <div class="brand-icon" style="{% if branding and branding.logo_path %}padding:0; overflow:hidden;{% endif %}">
+        {% if branding and branding.logo_path %}
+        <img src="{{ url_for('branding_logo') }}" style="width:52px; height:52px; object-fit:cover; display:block; border-radius:14px;">
+        {% else %}
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7z"/>
         </svg>
+        {% endif %}
       </div>
-      <h4>CERTO</h4>
+      <h4>{% if branding and branding.org_name %}{{ branding.org_name }}{% else %}CERTO{% endif %}</h4>
       <p>Certificate Authority Manager</p>
     </div>
 

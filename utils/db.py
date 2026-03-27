@@ -62,6 +62,15 @@ def init_db():
     """)
 
     cursor.execute("""
+    CREATE TABLE IF NOT EXISTS branding (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        org_name TEXT DEFAULT '',
+        logo_path TEXT DEFAULT ''
+    )
+    """)
+    cursor.execute("INSERT OR IGNORE INTO branding (id, org_name, logo_path) VALUES (1, '', '')")
+
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS audit_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp TEXT NOT NULL,

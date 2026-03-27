@@ -28,6 +28,13 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 year in seconds
 
+@app.context_processor
+def inject_branding():
+    conn = get_db()
+    row = conn.execute("SELECT * FROM branding WHERE id = 1").fetchone()
+    conn.close()
+    return {"branding": row}
+
 @app.before_request
 def redirect_http_to_https():
     if not request.is_secure and not app.debug and not request.host.startswith("localhost"):
@@ -1062,6 +1069,66 @@ def activity_trail():
     total_pages = max(1, (total + per_page - 1) // per_page)
     return render_template("activity_trail.html", logs=logs, page=page,
                            total_pages=total_pages, total=total)
+
+@app.route("/branding/logo")
+def branding_logo():
+    conn = get_db()
+    row = conn.execute("SELECT logo_path FROM branding WHERE id = 1").fetchone()
+    conn.close()
+    if row and row["logo_path"] and os.path.exists(row["logo_path"]):
+        return send_file(row["logo_path"])
+    return "", 404
+
+_ALLOWED_LOGO_EXTS = {"png", "jpg", "jpeg", "gif", "svg", "webp"}
+
+@app.route("/admin/branding", methods=["GET", "POST"])
+@admin_required
+def admin_branding():
+    conn = get_db()
+    branding = conn.execute("SELECT * FROM branding WHERE id = 1").fetchone()
+    conn.close()
+
+    if request.method == "POST":
+        org_name = request.form.get("org_name", "").strip()
+        logo = request.files.get("logo")
+        logo_path = branding["logo_path"] if branding else ""
+
+        if logo and logo.filename:
+            ext = logo.filename.rsplit(".", 1)[-1].lower()
+            if ext not in _ALLOWED_LOGO_EXTS:
+                flash("Unsupported file type. Use PNG, JPG, GIF, SVG, or WebP.", "error")
+                return redirect(url_for("admin_branding"))
+            os.makedirs("data/branding", exist_ok=True)
+            # Remove old logo file if it exists
+            if logo_path and os.path.exists(logo_path):
+                os.remove(logo_path)
+            logo_path = os.path.join("data", "branding", f"logo.{ext}")
+            logo.save(logo_path)
+
+        conn = get_db()
+        conn.execute("UPDATE branding SET org_name = ?, logo_path = ? WHERE id = 1",
+                     (org_name, logo_path))
+        conn.commit()
+        conn.close()
+        _audit_log("Updated Branding", details=f"org_name={org_name}")
+        flash("Branding settings saved.", "success")
+        return redirect(url_for("admin_branding"))
+
+    return render_template("admin_branding.html", branding=branding)
+
+@app.route("/admin/branding/remove-logo", methods=["POST"])
+@admin_required
+def remove_branding_logo():
+    conn = get_db()
+    row = conn.execute("SELECT logo_path FROM branding WHERE id = 1").fetchone()
+    if row and row["logo_path"] and os.path.exists(row["logo_path"]):
+        os.remove(row["logo_path"])
+    conn.execute("UPDATE branding SET logo_path = '' WHERE id = 1")
+    conn.commit()
+    conn.close()
+    _audit_log("Removed Branding Logo")
+    flash("Logo removed.", "success")
+    return redirect(url_for("admin_branding"))
 
 @app.errorhandler(404)
 def page_not_found(e):
