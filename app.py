@@ -7,13 +7,14 @@ import pyotp
 import qrcode
 import zipfile
 from functools import wraps
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import ipaddress as _ipaddress
 from flask import Flask, request, redirect, url_for, render_template, session, flash, send_file
 from werkzeug.utils import secure_filename
 import pycountry
 
 from cryptography import x509
-from cryptography.x509.oid import NameOID
+from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
@@ -56,6 +57,7 @@ def home():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    username = ""
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
@@ -74,7 +76,7 @@ def login():
             return redirect(url_for("home"))
 
         flash("Invalid credentials", "error")
-    return render_template("login.html")
+    return render_template("login.html", username=username)
 
 @app.route("/logout")
 def logout():
@@ -290,7 +292,7 @@ def create_rootca():
     country = request.form.get("country", "US")
     org = request.form.get("org", "Certo")
     common_name = request.form.get("common_name", "localhost")
-    days = int(request.form.get("days") or 365)
+    days = int(request.form.get("days") or 1825)
 
     if not name:
         flash("Name required", "error")
@@ -307,14 +309,22 @@ def create_rootca():
         x509.NameAttribute(NameOID.COMMON_NAME, common_name),
     ])
 
+    now = datetime.now(timezone.utc)
     cert = x509.CertificateBuilder() \
         .subject_name(subject) \
         .issuer_name(issuer) \
         .public_key(key.public_key()) \
         .serial_number(x509.random_serial_number()) \
-        .not_valid_before(datetime.utcnow()) \
-        .not_valid_after(datetime.utcnow() + timedelta(days=days)) \
+        .not_valid_before(now) \
+        .not_valid_after(now + timedelta(days=days)) \
         .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True) \
+        .add_extension(x509.KeyUsage(
+            digital_signature=False, content_commitment=False, key_encipherment=False,
+            data_encipherment=False, key_agreement=False,
+            key_cert_sign=True, crl_sign=True,
+            encipher_only=False, decipher_only=False
+        ), critical=True) \
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False) \
         .sign(key, hashes.SHA256())
 
     cert_path = os.path.join(save_dir, "cert.pem")
@@ -354,22 +364,25 @@ def reissue_rootca(name):
     with open(key_path, "rb") as f:
         key = serialization.load_pem_private_key(f.read(), password=None)
 
+    with open(cert_path, "rb") as f:
+        existing_cert = x509.load_pem_x509_certificate(f.read())
+
+    now = datetime.now(timezone.utc)
     cert = x509.CertificateBuilder() \
-        .subject_name(x509.Name([
-            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Reissued Org"),
-            x509.NameAttribute(NameOID.COMMON_NAME, name),
-        ])) \
-        .issuer_name(x509.Name([
-            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Reissued Org"),
-            x509.NameAttribute(NameOID.COMMON_NAME, name),
-        ])) \
+        .subject_name(existing_cert.subject) \
+        .issuer_name(existing_cert.subject) \
         .public_key(key.public_key()) \
         .serial_number(x509.random_serial_number()) \
-        .not_valid_before(datetime.utcnow()) \
-        .not_valid_after(datetime.utcnow() + timedelta(days=days)) \
+        .not_valid_before(now) \
+        .not_valid_after(now + timedelta(days=days)) \
         .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True) \
+        .add_extension(x509.KeyUsage(
+            digital_signature=False, content_commitment=False, key_encipherment=False,
+            data_encipherment=False, key_agreement=False,
+            key_cert_sign=True, crl_sign=True,
+            encipher_only=False, decipher_only=False
+        ), critical=True) \
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False) \
         .sign(key, hashes.SHA256())
 
     with open(cert_path, "wb") as f:
@@ -459,8 +472,20 @@ def ssl_page():
     rows = conn.execute("SELECT * FROM root_cas").fetchall()
     conn.close()
 
-    countries = sorted([(c.alpha_2, c.name) for c in pycountry.countries])
-    rootcas = [dict(name=row["name"]) for row in rows]
+    def _attr(name_obj, oid, default=""):
+        attrs = name_obj.get_attributes_for_oid(oid)
+        return attrs[0].value if attrs else default
+
+    rootcas = []
+    for row in rows:
+        ca_cert_path = os.path.join(row["path"], "cert.pem")
+        org = country = ""
+        if os.path.exists(ca_cert_path):
+            with open(ca_cert_path, "rb") as f:
+                ca_cert_obj = x509.load_pem_x509_certificate(f.read())
+            org = _attr(ca_cert_obj.subject, NameOID.ORGANIZATION_NAME)
+            country = _attr(ca_cert_obj.subject, NameOID.COUNTRY_NAME)
+        rootcas.append({"name": row["name"], "org": org, "country": country})
     certs = []
 
     ssl_dir = os.path.join("data", "ssl")
@@ -486,19 +511,18 @@ def ssl_page():
                     "root_ca": root_ca_name or "Unknown"
                 })
 
-    return render_template("ssl.html", rootcas=rootcas, countries=countries, certs=certs)
+    return render_template("ssl.html", rootcas=rootcas, certs=certs)
 
 @app.route("/ssl/create", methods=["POST"])
 @login_required
 def create_ssl():
     name = request.form.get("name")
     common_name = request.form.get("common_name")
-    org = request.form.get("org")
-    country = request.form.get("country", "US")
     days = int(request.form.get("days") or 365)
     selected_ca = request.form.get("root_ca")
+    sans_raw = request.form.get("sans", "")
 
-    if not all([name, common_name, org, selected_ca]):
+    if not all([name, common_name, selected_ca]):
         flash("All fields are required.", "error")
         return redirect(url_for("ssl_page"))
 
@@ -520,6 +544,14 @@ def create_ssl():
     with open(ca_key_path, "rb") as f:
         ca_key = serialization.load_pem_private_key(f.read(), password=None)
 
+    # Inherit org and country from the signing CA
+    def _attr(name_obj, oid, default=""):
+        attrs = name_obj.get_attributes_for_oid(oid)
+        return attrs[0].value if attrs else default
+
+    org = _attr(ca_cert.subject, NameOID.ORGANIZATION_NAME, "Certo")
+    country = _attr(ca_cert.subject, NameOID.COUNTRY_NAME, "US")
+
     # Generate private key
     ssl_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
@@ -530,15 +562,41 @@ def create_ssl():
         x509.NameAttribute(NameOID.COMMON_NAME, common_name),
     ])
 
+    # Build SAN list — always include CN, plus any extra entries from the form
+    san_entries = []
+    seen = set()
+    for entry in ([common_name] + [s.strip() for s in sans_raw.replace(",", "\n").splitlines() if s.strip()]):
+        if entry in seen:
+            continue
+        seen.add(entry)
+        try:
+            san_entries.append(x509.IPAddress(_ipaddress.ip_address(entry)))
+        except ValueError:
+            san_entries.append(x509.DNSName(entry))
+
     # Build certificate
+    now = datetime.now(timezone.utc)
     cert = x509.CertificateBuilder() \
         .subject_name(subject) \
         .issuer_name(ca_cert.subject) \
         .public_key(ssl_key.public_key()) \
         .serial_number(x509.random_serial_number()) \
-        .not_valid_before(datetime.utcnow()) \
-        .not_valid_after(datetime.utcnow() + timedelta(days=days)) \
+        .not_valid_before(now) \
+        .not_valid_after(now + timedelta(days=days)) \
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True) \
+        .add_extension(x509.SubjectAlternativeName(san_entries), critical=False) \
+        .add_extension(x509.KeyUsage(
+            digital_signature=True, content_commitment=False, key_encipherment=True,
+            data_encipherment=False, key_agreement=False,
+            key_cert_sign=False, crl_sign=False,
+            encipher_only=False, decipher_only=False
+        ), critical=True) \
+        .add_extension(x509.ExtendedKeyUsage([
+            ExtendedKeyUsageOID.SERVER_AUTH,
+            ExtendedKeyUsageOID.CLIENT_AUTH,
+        ]), critical=False) \
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(ssl_key.public_key()), critical=False) \
+        .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False) \
         .sign(ca_key, hashes.SHA256())
 
     # Write cert.pem
@@ -641,19 +699,50 @@ def reissue_ssl(name):
     with open(ca_key_path, "rb") as f:
         ca_key = serialization.load_pem_private_key(f.read(), password=None)
 
-    # Create new cert
+    # Read existing cert to preserve subject and SANs
+    with open(cert_path, "rb") as f:
+        existing_ssl_cert = x509.load_pem_x509_certificate(f.read())
+
+    try:
+        existing_san = existing_ssl_cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+    except x509.ExtensionNotFound:
+        existing_san = x509.SubjectAlternativeName([x509.DNSName(
+            existing_ssl_cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
+        )])
+
+    # Create new cert preserving subject and SANs
+    now = datetime.now(timezone.utc)
     cert = x509.CertificateBuilder() \
-        .subject_name(ca_cert.subject) \
+        .subject_name(existing_ssl_cert.subject) \
         .issuer_name(ca_cert.subject) \
         .public_key(ssl_key.public_key()) \
         .serial_number(x509.random_serial_number()) \
-        .not_valid_before(datetime.utcnow()) \
-        .not_valid_after(datetime.utcnow() + timedelta(days=days)) \
+        .not_valid_before(now) \
+        .not_valid_after(now + timedelta(days=days)) \
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True) \
+        .add_extension(existing_san, critical=False) \
+        .add_extension(x509.KeyUsage(
+            digital_signature=True, content_commitment=False, key_encipherment=True,
+            data_encipherment=False, key_agreement=False,
+            key_cert_sign=False, crl_sign=False,
+            encipher_only=False, decipher_only=False
+        ), critical=True) \
+        .add_extension(x509.ExtendedKeyUsage([
+            ExtendedKeyUsageOID.SERVER_AUTH,
+            ExtendedKeyUsageOID.CLIENT_AUTH,
+        ]), critical=False) \
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(ssl_key.public_key()), critical=False) \
+        .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False) \
         .sign(ca_key, hashes.SHA256())
 
     with open(cert_path, "wb") as f:
         f.write(cert.public_bytes(serialization.Encoding.PEM))
+
+    # Regenerate fullchain.pem with updated leaf cert
+    fullchain_path = os.path.join(ssl_dir, "fullchain.pem")
+    with open(fullchain_path, "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+        f.write(ca_cert.public_bytes(serialization.Encoding.PEM))
 
     flash(f"Reissued SSL certificate '{name}' successfully.", "success")
     return redirect(url_for("ssl_page"))
