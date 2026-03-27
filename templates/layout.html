@@ -503,6 +503,7 @@
               Home
             </a>
           </li>
+          {% if session.get('role') == 'admin' %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint == 'rootca' %}active{% endif %}" href="{{ url_for('rootca') }}">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -511,6 +512,7 @@
               Certificate Authorities
             </a>
           </li>
+          {% endif %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint == 'ssl_page' %}active{% endif %}" href="{{ url_for('ssl_page') }}">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -532,7 +534,15 @@
                 <polyline points="6 9 12 15 18 9"/>
               </svg>
             </div>
-            <ul id="adminSubmenu" style="list-style:none; padding:0 0 0 2.2rem; margin:0; display:{% if request.endpoint in ['activity_trail', 'admin_branding'] %}block{% else %}none{% endif %};">
+            <ul id="adminSubmenu" style="list-style:none; padding:0 0 0 2.2rem; margin:0; display:{% if request.endpoint in ['activity_trail', 'admin_branding', 'admin_users'] %}block{% else %}none{% endif %};">
+              <li>
+                <a class="nav-link {% if request.endpoint == 'admin_users' %}active{% endif %}" href="{{ url_for('admin_users') }}" style="padding:0.4rem 0.6rem; font-size:0.82rem;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                  Users
+                </a>
+              </li>
               <li>
                 <a class="nav-link {% if request.endpoint == 'activity_trail' %}active{% endif %}" href="{{ url_for('activity_trail') }}" style="padding:0.4rem 0.6rem; font-size:0.82rem;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

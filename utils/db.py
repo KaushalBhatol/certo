@@ -33,6 +33,8 @@ def init_db():
         cursor.execute("ALTER TABLE users ADD COLUMN mfa_secret TEXT DEFAULT NULL")
     if "mfa_enabled" not in existing:
         cursor.execute("ALTER TABLE users ADD COLUMN mfa_enabled INTEGER DEFAULT 0")
+    if "enabled" not in existing:
+        cursor.execute("ALTER TABLE users ADD COLUMN enabled INTEGER DEFAULT 1")
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS backup_codes (

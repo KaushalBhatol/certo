@@ -51,8 +51,11 @@ def login_required(f):
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if "username" not in session or session.get("role") != "admin":
+        if "username" not in session:
             return redirect(url_for("login"))
+        if session.get("role") != "admin":
+            flash("Access denied. Admin privileges required.", "error")
+            return redirect(url_for("home"))
         return f(*args, **kwargs)
     return decorated
 
@@ -140,10 +143,8 @@ def _days_until(expiry_date_str, fallback=365):
         return fallback
 
 @app.route("/")
+@login_required
 def home():
-    if "username" not in session:
-        return redirect(url_for("login"))
-
     conn = get_db()
     ca_rows = conn.execute("SELECT * FROM root_cas").fetchall()
     conn.close()
@@ -202,6 +203,9 @@ def login():
         conn.close()
 
         if user and bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
+            if not user["enabled"]:
+                flash("Your account has been disabled. Contact an administrator.", "error")
+                return render_template("login.html", username=username)
             if user["mfa_enabled"]:
                 session["mfa_pending_username"] = user["username"]
                 session["mfa_pending_role"] = user["role"]
@@ -227,6 +231,7 @@ def login():
     return render_template("login.html", username=username)
 
 @app.route("/logout")
+@login_required
 def logout():
     _audit_log("Logout")
     session.clear()
@@ -1069,6 +1074,130 @@ def activity_trail():
     total_pages = max(1, (total + per_page - 1) // per_page)
     return render_template("activity_trail.html", logs=logs, page=page,
                            total_pages=total_pages, total=total)
+
+@app.route("/admin/users")
+@admin_required
+def admin_users():
+    conn = get_db()
+    users = conn.execute("SELECT username, role, full_name, email, mfa_enabled, enabled FROM users ORDER BY role, username").fetchall()
+    conn.close()
+    return render_template("admin_users.html", users=users)
+
+@app.route("/admin/users/create", methods=["POST"])
+@admin_required
+def admin_users_create():
+    username = request.form.get("username", "").strip()
+    full_name = request.form.get("full_name", "").strip()
+    email = request.form.get("email", "").strip()
+    role = request.form.get("role", "user")
+    password = request.form.get("password", "")
+
+    if not username or not password:
+        flash("Username and password are required.", "error")
+        return redirect(url_for("admin_users"))
+    if role not in ("admin", "user"):
+        flash("Invalid role.", "error")
+        return redirect(url_for("admin_users"))
+
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    conn = get_db()
+    try:
+        conn.execute("INSERT INTO users (username, password_hash, role, full_name, email) VALUES (?,?,?,?,?)",
+                     (username, hashed, role, full_name, email))
+        conn.commit()
+    except Exception:
+        conn.close()
+        flash(f"Username '{username}' already exists.", "error")
+        return redirect(url_for("admin_users"))
+    conn.close()
+    _audit_log("Created User", target=username, details=f"role={role}")
+    flash(f"User '{username}' created.", "success")
+    return redirect(url_for("admin_users"))
+
+@app.route("/admin/users/<username>/edit", methods=["POST"])
+@admin_required
+def admin_users_edit(username):
+    full_name = request.form.get("full_name", "").strip()
+    email = request.form.get("email", "").strip()
+    role = request.form.get("role", "user")
+
+    if role not in ("admin", "user"):
+        flash("Invalid role.", "error")
+        return redirect(url_for("admin_users"))
+
+    conn = get_db()
+    conn.execute("UPDATE users SET full_name=?, email=?, role=? WHERE username=?",
+                 (full_name, email, role, username))
+    conn.commit()
+    conn.close()
+    _audit_log("Edited User", target=username, details=f"role={role}")
+    flash(f"User '{username}' updated.", "success")
+    return redirect(url_for("admin_users"))
+
+@app.route("/admin/users/<username>/reset-password", methods=["POST"])
+@admin_required
+def admin_users_reset_password(username):
+    new_password = request.form.get("new_password", "")
+    if len(new_password) < 4:
+        flash("Password must be at least 4 characters.", "error")
+        return redirect(url_for("admin_users"))
+
+    hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    conn = get_db()
+    conn.execute("UPDATE users SET password_hash=? WHERE username=?", (hashed, username))
+    conn.commit()
+    conn.close()
+    _audit_log("Reset User Password", target=username)
+    flash(f"Password reset for '{username}'.", "success")
+    return redirect(url_for("admin_users"))
+
+@app.route("/admin/users/<username>/delete", methods=["POST"])
+@admin_required
+def admin_users_delete(username):
+    if username == session.get("username"):
+        flash("You cannot delete your own account.", "error")
+        return redirect(url_for("admin_users"))
+    conn = get_db()
+    conn.execute("DELETE FROM users WHERE username=?", (username,))
+    conn.execute("DELETE FROM backup_codes WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
+    _audit_log("Deleted User", target=username)
+    flash(f"User '{username}' deleted.", "success")
+    return redirect(url_for("admin_users"))
+
+@app.route("/admin/users/<username>/toggle-status", methods=["POST"])
+@admin_required
+def admin_users_toggle_status(username):
+    if username == session.get("username"):
+        flash("You cannot disable your own account.", "error")
+        return redirect(url_for("admin_users"))
+    conn = get_db()
+    user = conn.execute("SELECT enabled FROM users WHERE username=?", (username,)).fetchone()
+    if not user:
+        conn.close()
+        flash("User not found.", "error")
+        return redirect(url_for("admin_users"))
+    new_status = 0 if user["enabled"] else 1
+    conn.execute("UPDATE users SET enabled=? WHERE username=?", (new_status, username))
+    conn.commit()
+    conn.close()
+    action = "Enabled User" if new_status else "Disabled User"
+    _audit_log(action, target=username)
+    flash(f"User '{username}' {'enabled' if new_status else 'disabled'}.", "success")
+    return redirect(url_for("admin_users"))
+
+@app.route("/admin/users/<username>/reset-mfa", methods=["POST"])
+@admin_required
+def admin_users_reset_mfa(username):
+    conn = get_db()
+    conn.execute("UPDATE users SET mfa_secret=NULL, mfa_enabled=0 WHERE username=?", (username,))
+    conn.execute("DELETE FROM backup_codes WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
+    _audit_log("Reset User MFA", target=username)
+    flash(f"MFA reset for '{username}'. They can now log in without MFA.", "success")
+    return redirect(url_for("admin_users"))
 
 @app.route("/branding/logo")
 def branding_logo():
