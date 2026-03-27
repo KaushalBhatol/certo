@@ -28,9 +28,9 @@ def initialize_user_store():
         password = "certo"
         hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         cursor.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                       ("certo", hashed, "admin"))
+                       ("admin", hashed, "admin"))
         conn.commit()
-        print("✅ Default admin user created: certo / certo")
+        print("✅ Default admin user created: admin / certo")
 
     conn.close()
 

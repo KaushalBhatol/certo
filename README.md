@@ -19,7 +19,7 @@
 
 - 🔐 Root and Intermediate CA management
 - 📜 SSL Certificate issuance
-- 📁 JSON-based storage (no database required)
+- 🗄️ SQLite-based storage
 - 📄 Certificate metadata tracking
 - 🧑‍💼 Secure admin interface (username/password)
 - 📦 Optional Docker support
@@ -45,3 +45,15 @@ pip install -r requirements.txt
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 .\install.ps1
 ```
+
+---
+
+## 🔐 Default Credentials
+
+On first startup, if no users exist in the database, a default admin account is created automatically:
+
+| Username | Password |
+|----------|----------|
+| `admin`  | `certo`  |
+
+> Change the password after first login.

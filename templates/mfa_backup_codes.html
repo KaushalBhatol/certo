@@ -1,0 +1,58 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="page-header">
+  <h3>Save Your Backup Codes</h3>
+  <p>Store these somewhere safe. Each code can only be used once.</p>
+</div>
+
+<div style="max-width:480px; display:flex; flex-direction:column; gap:1.25rem;">
+
+  <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:12px; padding:0.85rem 1.1rem; font-size:0.82rem; color:#92400e; display:flex; gap:0.6rem; align-items:flex-start;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; margin-top:1px;">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+    These codes will <strong>not be shown again</strong>. Copy or download them now.
+  </div>
+
+  <div style="background:#fff; border:1px solid #e2e8f0; border-radius:14px; overflow:hidden;">
+    <div style="padding:1rem 1.5rem; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between;">
+      <span style="font-size:0.875rem; font-weight:700; color:#0f172a;">Backup Codes</span>
+      <span style="font-size:0.75rem; color:#94a3b8;">{{ codes | length }} codes</span>
+    </div>
+    <div style="padding:1.25rem 1.5rem;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.6rem;" id="codeGrid">
+        {% for code in codes %}
+        <code style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:0.5rem 0.75rem; font-size:0.875rem; color:#0f172a; letter-spacing:0.08em; text-align:center;">{{ code }}</code>
+        {% endfor %}
+      </div>
+    </div>
+    <div style="padding:1rem 1.5rem; border-top:1px solid #e2e8f0; display:flex; gap:0.75rem; justify-content:flex-end;">
+      <button onclick="copyCodes()" class="btn-outline-soft">
+        Copy All
+      </button>
+      <button onclick="downloadCodes()" class="btn-outline-soft">
+        Download
+      </button>
+      <a href="{{ url_for('settings') }}" class="btn-accent" style="text-decoration:none;">I've saved them</a>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const codes = {{ codes | tojson }};
+
+  function copyCodes() {
+    navigator.clipboard.writeText(codes.join('\n'));
+  }
+
+  function downloadCodes() {
+    const blob = new Blob(['Certo - MFA Backup Codes\n\n' + codes.join('\n')], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'certo-backup-codes.txt';
+    a.click();
+  }
+</script>
+{% endblock %}

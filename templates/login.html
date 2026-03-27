@@ -111,16 +111,7 @@
       box-shadow: 0 4px 14px rgba(99,102,241,0.4);
     }
 
-    .alert-error {
-      background: rgba(239,68,68,0.1);
-      border: 1px solid rgba(239,68,68,0.3);
-      border-radius: 8px;
-      color: #fca5a5;
-      font-size: 0.82rem;
-      padding: 0.6rem 0.85rem;
-      margin-top: 1rem;
-      text-align: center;
-    }
+    @keyframes slideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
 
     .mb-4 { margin-bottom: 1.25rem; }
     .mb-5 { margin-bottom: 1.5rem; }
@@ -152,13 +143,38 @@
         <button type="submit" class="btn-login">Sign in</button>
       </form>
 
-      {% with messages = get_flashed_messages() %}
-      {% if messages %}
-      <div class="alert-error">{{ messages[0] }}</div>
-      {% endif %}
-      {% endwith %}
     </div>
   </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  {% set category, message = messages[0] %}
+  <div id="toast" style="
+      position:fixed; top:1.25rem; right:1.25rem; z-index:999;
+      background:#fff; border-radius:12px; box-shadow:0 8px 28px rgba(0,0,0,0.18);
+      padding:0.85rem 1rem; display:flex; align-items:center; gap:0.75rem;
+      min-width:300px; max-width:380px; animation:slideIn 0.22s ease;
+      border-left:4px solid {% if category=='success' %}#16a34a{% elif category=='error' %}#dc2626{% elif category=='warning' %}#d97706{% else %}#6366f1{% endif %};">
+    <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+        background:{% if category=='success' %}#f0fdf4{% elif category=='error' %}#fef2f2{% elif category=='warning' %}#fffbeb{% else %}#eef2ff{% endif %};">
+      {% if category == 'success' %}
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      {% elif category == 'error' %}
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      {% elif category == 'warning' %}
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      {% else %}
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      {% endif %}
+    </div>
+    <div style="flex:1;font-size:0.85rem;font-weight:500;color:#0f172a;line-height:1.4;">{{ message }}</div>
+    <button onclick="document.getElementById('toast').remove()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:1.2rem;line-height:1;padding:0;flex-shrink:0;">&times;</button>
+  </div>
+  <script>
+    setTimeout(() => { const t = document.getElementById('toast'); if(t){ t.style.transition='opacity 0.3s'; t.style.opacity='0'; setTimeout(()=>t.remove(),300); }}, 4700);
+  </script>
+  {% endif %}
+  {% endwith %}
 </body>
 
 </html>

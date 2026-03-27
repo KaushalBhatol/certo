@@ -43,32 +43,55 @@
     }
 
     .sidebar-brand {
-      padding: 1.5rem 1.25rem 1rem;
+      padding: 1.5rem 1.25rem;
       border-bottom: 1px solid #1e293b;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .brand-container {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      margin-bottom: 0.35rem;
     }
 
     .sidebar-brand .brand-icon {
       width: 36px;
       height: 36px;
-      background: var(--accent);
+      background: linear-gradient(135deg, var(--accent), #4f46e5);
       border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 0.5rem;
+      flex-shrink: 0;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .sidebar-brand:hover .brand-icon {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(99, 102, 241, 0.35);
     }
 
     .sidebar-brand h5 {
       color: #f8fafc;
-      font-weight: 700;
-      letter-spacing: 0.08em;
+      font-weight: 800;
+      letter-spacing: 0.12em;
       margin: 0;
-      font-size: 1rem;
+      font-size: 1.05rem;
+      background: linear-gradient(135deg, #f8fafc, #cbd5e1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
     }
 
     .sidebar-brand small {
-      color: #475569;
-      font-size: 0.72rem;
+      color: #64748b;
+      font-size: 0.68rem;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      margin: 0;
     }
 
     .sidebar-nav {
@@ -395,35 +418,48 @@
 
     .toast-custom {
       background: #fff;
-      border: 1px solid var(--border-color);
       border-radius: 12px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.13);
       padding: 0.85rem 1rem;
       display: flex;
       align-items: center;
       gap: 0.75rem;
-      min-width: 280px;
-      animation: slideIn 0.2s ease;
+      min-width: 300px;
+      max-width: 380px;
+      animation: slideIn 0.22s ease;
+      border-left: 4px solid #6366f1;
     }
+
+    .toast-success { border-left-color: #16a34a; }
+    .toast-error   { border-left-color: #dc2626; }
+    .toast-warning { border-left-color: #d97706; }
 
     @keyframes slideIn {
       from { opacity: 0; transform: translateX(20px); }
       to   { opacity: 1; transform: translateX(0); }
     }
 
-    .toast-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--accent);
+    .toast-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
       flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #f8fafc;
     }
+
+    .toast-success .toast-icon { background: #f0fdf4; }
+    .toast-error   .toast-icon { background: #fef2f2; }
+    .toast-warning .toast-icon { background: #fffbeb; }
 
     .toast-text {
       flex: 1;
       font-size: 0.85rem;
       font-weight: 500;
       color: var(--text-primary);
+      line-height: 1.4;
     }
 
     .toast-close {
@@ -433,7 +469,8 @@
       cursor: pointer;
       padding: 0;
       line-height: 1;
-      font-size: 1.1rem;
+      font-size: 1.2rem;
+      flex-shrink: 0;
     }
 
     .toast-close:hover { color: var(--text-primary); }
@@ -446,17 +483,18 @@
     <!-- Sidebar -->
     <div class="sidebar">
       <div class="sidebar-brand">
-        <div class="brand-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7z"/>
-          </svg>
+        <div class="brand-container">
+          <div class="brand-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7z"/>
+            </svg>
+          </div>
+          <h5>CERTO</h5>
         </div>
-        <h5>CERTO</h5>
         <small>Certificate Authority Manager</small>
       </div>
 
       <nav class="sidebar-nav">
-        <div class="nav-section-label">Navigation</div>
         <ul class="nav flex-column">
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint == 'home' %}active{% endif %}" href="{{ url_for('home') }}">
@@ -503,7 +541,7 @@
             </svg>
           </div>
           <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu">
-            <li><a class="dropdown-item disabled text-muted" href="#">Personal Settings</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('settings') }}">Personal Settings</a></li>
             <li><hr class="dropdown-divider my-1"></li>
             <li>
               <a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
@@ -525,13 +563,24 @@
   </div>
 
   <!-- Toast Notification -->
-  {% with messages = get_flashed_messages() %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
   {% if messages %}
+  {% set category, message = messages[0] %}
   <div class="toast-container-custom">
-    <div class="toast-custom" id="toastMessage">
-      <div class="toast-dot"></div>
-      <div class="toast-text">{{ messages[0] }}</div>
-      <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
+    <div class="toast-custom toast-{{ category }}" id="toastMessage">
+      <div class="toast-icon">
+        {% if category == 'success' %}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        {% elif category == 'error' %}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        {% elif category == 'warning' %}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        {% else %}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        {% endif %}
+      </div>
+      <div class="toast-text">{{ message }}</div>
+      <button class="toast-close" onclick="this.parentElement.parentElement.remove()">&times;</button>
     </div>
   </div>
   {% endif %}
@@ -539,10 +588,10 @@
 
   <script>
     window.addEventListener('DOMContentLoaded', () => {
-      const toast = document.getElementById('toastMessage');
-      if (toast) {
-        setTimeout(() => toast.style.opacity = '0', 4800);
-        setTimeout(() => toast.remove(), 5100);
+      const wrap = document.querySelector('.toast-container-custom');
+      if (wrap) {
+        setTimeout(() => { wrap.style.opacity = '0'; wrap.style.transition = 'opacity 0.3s'; }, 4700);
+        setTimeout(() => wrap.remove(), 5000);
       }
     });
   </script>

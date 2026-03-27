@@ -1,6 +1,10 @@
 import os
 import io
+import base64
+import secrets
 import bcrypt
+import pyotp
+import qrcode
 import zipfile
 from functools import wraps
 from datetime import datetime, timedelta
@@ -61,17 +65,192 @@ def login():
         conn.close()
 
         if user and bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
+            if user["mfa_enabled"]:
+                session["mfa_pending_username"] = user["username"]
+                session["mfa_pending_role"] = user["role"]
+                return redirect(url_for("mfa_verify"))
             session["username"] = user["username"]
             session["role"] = user["role"]
             return redirect(url_for("home"))
 
-        flash("Invalid credentials")
+        flash("Invalid credentials", "error")
     return render_template("login.html")
 
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+@app.route("/settings", methods=["GET", "POST"])
+@login_required
+def settings():
+    conn = get_db()
+    user = conn.execute("SELECT * FROM users WHERE username = ?", (session["username"],)).fetchone()
+
+    if request.method == "POST":
+        full_name = request.form.get("full_name", "").strip()
+        email = request.form.get("email", "").strip()
+        current_password = request.form.get("current_password", "")
+        new_password = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
+
+        conn.execute("UPDATE users SET full_name = ?, email = ? WHERE username = ?",
+                     (full_name, email, session["username"]))
+
+        if current_password or new_password or confirm_password:
+            if not bcrypt.checkpw(current_password.encode(), user["password_hash"].encode()):
+                conn.commit()
+                conn.close()
+                flash("Current password is incorrect.", "error")
+                return redirect(url_for("settings"))
+            if new_password != confirm_password:
+                conn.commit()
+                conn.close()
+                flash("New passwords do not match.", "error")
+                return redirect(url_for("settings"))
+            if len(new_password) < 4:
+                conn.commit()
+                conn.close()
+                flash("New password must be at least 4 characters.", "error")
+                return redirect(url_for("settings"))
+            hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+            conn.execute("UPDATE users SET password_hash = ? WHERE username = ?",
+                         (hashed, session["username"]))
+
+        conn.commit()
+        conn.close()
+        flash("Settings saved.", "success")
+        return redirect(url_for("settings"))
+
+    conn.close()
+    return render_template("settings.html", user=user)
+
+# ---------- MFA ROUTES ----------
+
+@app.route("/mfa", methods=["GET", "POST"])
+def mfa_verify():
+    if "mfa_pending_username" not in session:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        code = request.form.get("code", "").strip().replace("-", "").replace(" ", "")
+        username = session["mfa_pending_username"]
+
+        conn = get_db()
+        user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+
+        # Try TOTP
+        totp = pyotp.TOTP(user["mfa_secret"])
+        if totp.verify(code, valid_window=1):
+            conn.close()
+            session.pop("mfa_pending_username")
+            session.pop("mfa_pending_role")
+            session["username"] = user["username"]
+            session["role"] = user["role"]
+            return redirect(url_for("home"))
+
+        # Try backup code
+        backup = conn.execute(
+            "SELECT * FROM backup_codes WHERE username = ? AND used = 0", (username,)
+        ).fetchall()
+        for row in backup:
+            if bcrypt.checkpw(code.encode(), row["code_hash"].encode()):
+                conn.execute("UPDATE backup_codes SET used = 1 WHERE id = ?", (row["id"],))
+                conn.commit()
+                conn.close()
+                session.pop("mfa_pending_username")
+                session.pop("mfa_pending_role")
+                session["username"] = user["username"]
+                session["role"] = user["role"]
+                flash("Backup code used. Please generate new backup codes.", "warning")
+                return redirect(url_for("home"))
+
+        conn.close()
+        flash("Invalid code. Please try again.", "error")
+
+    return render_template("mfa_verify.html")
+
+
+@app.route("/settings/mfa/setup", methods=["GET", "POST"])
+@login_required
+def mfa_setup():
+    if request.method == "POST":
+        code = request.form.get("code", "").strip()
+        secret = session.get("mfa_setup_secret")
+
+        if not secret:
+            return redirect(url_for("mfa_setup"))
+
+        totp = pyotp.TOTP(secret)
+        if not totp.verify(code, valid_window=1):
+            flash("Invalid code. Please scan the QR code again and try.", "error")
+            return redirect(url_for("mfa_setup"))
+
+        # Generate 8 backup codes
+        plain_codes = [
+            f"{secrets.token_hex(3).upper()}-{secrets.token_hex(3).upper()}"
+            for _ in range(8)
+        ]
+
+        conn = get_db()
+        conn.execute("UPDATE users SET mfa_secret = ?, mfa_enabled = 1 WHERE username = ?",
+                     (secret, session["username"]))
+        conn.execute("DELETE FROM backup_codes WHERE username = ?", (session["username"],))
+        for code_plain in plain_codes:
+            code_hash = bcrypt.hashpw(code_plain.replace("-", "").encode(), bcrypt.gensalt()).decode()
+            conn.execute("INSERT INTO backup_codes (username, code_hash) VALUES (?, ?)",
+                         (session["username"], code_hash))
+        conn.commit()
+        conn.close()
+
+        session.pop("mfa_setup_secret", None)
+        session["mfa_backup_codes"] = plain_codes
+        return redirect(url_for("mfa_backup_codes"))
+
+    # Generate a fresh secret for setup
+    secret = pyotp.random_base32()
+    session["mfa_setup_secret"] = secret
+
+    totp = pyotp.TOTP(secret)
+    uri = totp.provisioning_uri(name=session["username"], issuer_name="Certo")
+
+    img = qrcode.make(uri)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    qr_b64 = base64.b64encode(buf.getvalue()).decode()
+
+    return render_template("mfa_setup.html", qr_b64=qr_b64, secret=secret)
+
+
+@app.route("/settings/mfa/backup-codes")
+@login_required
+def mfa_backup_codes():
+    codes = session.pop("mfa_backup_codes", None)
+    if not codes:
+        return redirect(url_for("settings"))
+    return render_template("mfa_backup_codes.html", codes=codes)
+
+
+@app.route("/settings/mfa/disable", methods=["POST"])
+@login_required
+def mfa_disable():
+    password = request.form.get("password", "")
+    conn = get_db()
+    user = conn.execute("SELECT * FROM users WHERE username = ?", (session["username"],)).fetchone()
+
+    if not bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
+        conn.close()
+        flash("Incorrect password. MFA was not disabled.", "error")
+        return redirect(url_for("settings"))
+
+    conn.execute("UPDATE users SET mfa_secret = NULL, mfa_enabled = 0 WHERE username = ?",
+                 (session["username"],))
+    conn.execute("DELETE FROM backup_codes WHERE username = ?", (session["username"],))
+    conn.commit()
+    conn.close()
+    flash("MFA has been disabled.", "success")
+    return redirect(url_for("settings"))
+
 
 # ---------- ROOT CA ROUTES ----------
 
@@ -83,7 +262,7 @@ def import_rootca():
     name = request.form.get("name")
 
     if not cert or not key or not name:
-        flash("Missing certificate, key, or name")
+        flash("Missing certificate, key, or name", "error")
         return redirect(url_for("rootca"))
 
     safe_name = secure_filename(name)
@@ -101,7 +280,7 @@ def import_rootca():
     conn.commit()
     conn.close()
 
-    flash("Certificate imported")
+    flash("Certificate imported", "success")
     return redirect(url_for("rootca"))
 
 @app.route("/rootca/create", methods=["POST"])
@@ -114,7 +293,7 @@ def create_rootca():
     days = int(request.form.get("days") or 365)
 
     if not name:
-        flash("Name required")
+        flash("Name required", "error")
         return redirect(url_for("rootca"))
 
     save_dir = os.path.join("data", "rootca", secure_filename(name))
@@ -156,7 +335,7 @@ def create_rootca():
     conn.commit()
     conn.close()
 
-    flash("New Root CA created")
+    flash("New Root CA created", "success")
     return redirect(url_for("rootca"))
 
 @app.route("/rootca/reissue/<name>", methods=["POST"])
@@ -169,7 +348,7 @@ def reissue_rootca(name):
     days = int(request.form.get("days") or 365)
 
     if not os.path.exists(key_path):
-        flash("Private key not found. Cannot reissue.")
+        flash("Private key not found. Cannot reissue.", "error")
         return redirect(url_for("rootca"))
 
     with open(key_path, "rb") as f:
@@ -196,7 +375,7 @@ def reissue_rootca(name):
     with open(cert_path, "wb") as f:
         f.write(cert.public_bytes(serialization.Encoding.PEM))
 
-    flash(f"Certificate for {name} reissued successfully")
+    flash(f"Certificate for {name} reissued successfully", "success")
     return redirect(url_for("rootca"))
 
 @app.route("/rootca", methods=["GET"])
@@ -232,7 +411,7 @@ def export_cert(name):
     key_path = os.path.join(ca_dir, "key.pem")
 
     if not os.path.exists(cert_path) or not os.path.exists(key_path):
-        flash("Certificate files not found")
+        flash("Certificate files not found", "error")
         return redirect(url_for("rootca"))
 
     zip_buffer = io.BytesIO()
@@ -255,7 +434,7 @@ def delete_rootca():
     confirm_name = request.form.get("confirm_name")
 
     if name != confirm_name:
-        flash("Name confirmation mismatch. Deletion cancelled.")
+        flash("Name confirmation mismatch. Deletion cancelled.", "error")
         return redirect(url_for("rootca"))
 
     path = os.path.join("data", "rootca", secure_filename(name))
@@ -268,7 +447,7 @@ def delete_rootca():
     conn.commit()
     conn.close()
 
-    flash(f"Deleted Root CA: {name}")
+    flash(f"Deleted Root CA: {name}", "success")
     return redirect(url_for("rootca"))
 
 # ---------- SSL CERTIFICATE ROUTES ----------
@@ -320,7 +499,7 @@ def create_ssl():
     selected_ca = request.form.get("root_ca")
 
     if not all([name, common_name, org, selected_ca]):
-        flash("All fields are required.")
+        flash("All fields are required.", "error")
         return redirect(url_for("ssl_page"))
 
     ca_dir = os.path.join("data", "rootca", secure_filename(selected_ca))
@@ -331,7 +510,7 @@ def create_ssl():
     ca_key_path = os.path.join(ca_dir, "key.pem")
 
     if not os.path.exists(ca_cert_path) or not os.path.exists(ca_key_path):
-        flash("Selected Root CA not found.")
+        flash("Selected Root CA not found.", "error")
         return redirect(url_for("ssl_page"))
 
     # Load CA certificate and key
@@ -387,7 +566,7 @@ def create_ssl():
     with open(meta_path, "w") as f:
         f.write(selected_ca)
 
-    flash(f"SSL certificate '{name}' created successfully.")
+    flash(f"SSL certificate '{name}' created successfully.", "success")
     return redirect(url_for("ssl_page"))
 
 
@@ -404,7 +583,7 @@ def export_ssl(name):
 
     # Check if any of the critical files are missing
     if not os.path.exists(cert_path) or not os.path.exists(key_path):
-        flash("SSL certificate files not found.")
+        flash("SSL certificate files not found.", "error")
         return redirect(url_for("ssl_page"))
 
     zip_buffer = io.BytesIO()
@@ -439,7 +618,7 @@ def reissue_ssl(name):
     meta_path = os.path.join(ssl_dir, "meta.txt")
 
     if not all([os.path.exists(p) for p in [key_path, meta_path]]):
-        flash("Missing key or meta information.")
+        flash("Missing key or meta information.", "error")
         return redirect(url_for("ssl_page"))
 
     with open(key_path, "rb") as f:
@@ -453,7 +632,7 @@ def reissue_ssl(name):
     ca_key_path = os.path.join(ca_dir, "key.pem")
 
     if not os.path.exists(ca_cert_path) or not os.path.exists(ca_key_path):
-        flash("Root CA used for signing not found.")
+        flash("Root CA used for signing not found.", "error")
         return redirect(url_for("ssl_page"))
 
     with open(ca_cert_path, "rb") as f:
@@ -476,7 +655,7 @@ def reissue_ssl(name):
     with open(cert_path, "wb") as f:
         f.write(cert.public_bytes(serialization.Encoding.PEM))
 
-    flash(f"Reissued SSL certificate '{name}' successfully.")
+    flash(f"Reissued SSL certificate '{name}' successfully.", "success")
     return redirect(url_for("ssl_page"))
 
 @app.route("/ssl/delete", methods=["POST"])
@@ -486,16 +665,16 @@ def delete_ssl():
     confirm_name = request.form.get("confirm_name")
 
     if name != confirm_name:
-        flash("Confirmation name does not match.")
+        flash("Confirmation name does not match.", "error")
         return redirect(url_for("ssl_page"))
 
     ssl_path = os.path.join("data", "ssl", secure_filename(name))
     if os.path.exists(ssl_path):
         import shutil
         shutil.rmtree(ssl_path)
-        flash(f"Deleted SSL certificate: {name}")
+        flash(f"Deleted SSL certificate: {name}", "success")
     else:
-        flash("SSL certificate not found.")
+        flash("SSL certificate not found.", "error")
 
     return redirect(url_for("ssl_page"))
 
@@ -508,7 +687,7 @@ def import_ssl():
     key = request.files.get("key")
 
     if not all([name, root_ca, cert, key]):
-        flash("All fields are required.")
+        flash("All fields are required.", "error")
         return redirect(url_for("ssl_page"))
 
     save_dir = os.path.join("data", "ssl", secure_filename(name))
@@ -520,7 +699,7 @@ def import_ssl():
     with open(os.path.join(save_dir, "meta.txt"), "w") as f:
         f.write(root_ca)
 
-    flash(f"SSL certificate '{name}' imported.")
+    flash(f"SSL certificate '{name}' imported.", "success")
     return redirect(url_for("ssl_page"))
 
 if __name__ == "__main__":
