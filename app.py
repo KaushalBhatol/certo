@@ -1061,7 +1061,7 @@ def import_ssl():
 @app.route("/admin/activity-trail")
 @admin_required
 def activity_trail():
-    per_page = 50
+    per_page = 25
     try:
         page = max(1, int(request.args.get("page", 1)))
     except ValueError:
