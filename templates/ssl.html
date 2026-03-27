@@ -1,43 +1,77 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="container-fluid">
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <h3>SSL Certificates</h3>
-    <div>
-      <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#createModal">Create</button>
-      <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#importModal">Import</button>
-    </div>
-  </div>
 
-  {% for cert in certs %}
-  <div class="border rounded p-3 mb-3 bg-light">
-    <div class="d-flex justify-content-between align-items-center">
-      <div class="flex-grow-1">
-        <div class="fw-bold">{{ cert.name }}</div>
-        <div class="text-muted small">
-          Signed By: {{ cert.root_ca }} &nbsp;|&nbsp;
-          Created: {{ cert.created }} &nbsp;|&nbsp;
-          Expires: {{ cert.expires }}
-        </div>
-      </div>
-      <div class="dropdown ms-3">
-        <button class="btn btn-sm btn-light" type="button" data-bs-toggle="dropdown">
-          &#8942;
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end">
-          <li><a class="dropdown-item" href="{{ url_for('export_ssl', name=cert.name) }}">Export as ZIP</a></li>
-          <li><button class="dropdown-item text-warning" data-bs-toggle="modal" data-bs-target="#reissueModal"
-              data-name="{{ cert.name }}">Reissue</button></li>
-          <li><button class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#deleteModal"
-              data-name="{{ cert.name }}">Delete</button></li>
-        </ul>
-      </div>
+<div class="page-header d-flex justify-content-between align-items-start">
+  <div>
+    <h3>SSL Certificates</h3>
+    <p>Issue and manage SSL certificates signed by your Root CAs.</p>
+  </div>
+  <div style="display:flex; gap:0.5rem;">
+    <button class="btn-outline-soft" data-bs-toggle="modal" data-bs-target="#importModal">
+      Import
+    </button>
+    <button class="btn-accent" data-bs-toggle="modal" data-bs-target="#createModal">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New Certificate
+    </button>
+  </div>
+</div>
+
+{% for cert in certs %}
+<div class="cert-card">
+  <div class="cert-icon">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7z"/>
+    </svg>
+  </div>
+  <div style="flex:1; min-width:0;">
+    <div class="cert-name">{{ cert.name }}</div>
+    <div class="cert-meta">
+      <span>Signed by: <strong style="color:#6366f1;">{{ cert.root_ca }}</strong></span>
+      <span class="sep">|</span>
+      <span>Created: {{ cert.created }}</span>
+      <span class="sep">|</span>
+      <span>Expires: {{ cert.expires }}</span>
+      <span class="badge-valid">SSL</span>
     </div>
   </div>
-  {% else %}
-  <p>No SSL certificates available.</p>
-  {% endfor %}
+  <div class="dropdown">
+    <button class="btn-icon" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+      </svg>
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end">
+      <li>
+        <a class="dropdown-item d-flex align-items-center gap-2" href="{{ url_for('export_ssl', name=cert.name) }}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export as ZIP
+        </a>
+      </li>
+      <li>
+        <button class="dropdown-item d-flex align-items-center gap-2" style="color:#d97706;" data-bs-toggle="modal" data-bs-target="#reissueModal" data-name="{{ cert.name }}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          Reissue
+        </button>
+      </li>
+      <li><hr class="dropdown-divider my-1"></li>
+      <li>
+        <button class="dropdown-item d-flex align-items-center gap-2 text-danger" data-bs-toggle="modal" data-bs-target="#deleteModal" data-name="{{ cert.name }}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          Delete
+        </button>
+      </li>
+    </ul>
+  </div>
 </div>
+{% else %}
+<div class="empty-state">
+  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7z"/>
+  </svg>
+  <p>No SSL certificates yet. Create one using a Root CA.</p>
+</div>
+{% endfor %}
 
 <!-- Create Modal -->
 <div class="modal fade" id="createModal" tabindex="-1">
@@ -47,29 +81,45 @@
         <h5 class="modal-title">Create SSL Certificate</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-      <div class="modal-body">
-        <input name="name" class="form-control mb-2" placeholder="Certificate Name" required>
-        <input name="common_name" class="form-control mb-2" placeholder="Common Name (e.g. example.com)" required>
-        <input name="org" class="form-control mb-2" placeholder="Organization" required>
-
-        <select name="country" class="form-select mb-2" required>
-          <option value="">Select Country</option>
-          {% for code, name in countries %}
-          <option value="{{ code }}" {% if code=='IN' %}selected{% endif %}>{{ name }}</option>
-          {% endfor %}
-        </select>
-
-        <input name="days" type="number" class="form-control mb-2" placeholder="Valid Days (default 365)">
-
-        <select name="root_ca" class="form-select mb-2" required>
-          <option value="">Select Root CA to Sign</option>
-          {% for ca in rootcas %}
-          <option value="{{ ca.name }}">{{ ca.name }}</option>
-          {% endfor %}
-        </select>
+      <div class="modal-body" style="display:flex; flex-direction:column; gap:0.85rem;">
+        <div>
+          <label class="form-label">Certificate Name</label>
+          <input name="name" class="form-control" placeholder="e.g. app-server" required>
+        </div>
+        <div>
+          <label class="form-label">Common Name</label>
+          <input name="common_name" class="form-control" placeholder="e.g. example.com" required>
+        </div>
+        <div>
+          <label class="form-label">Organization</label>
+          <input name="org" class="form-control" placeholder="e.g. Acme Corp" required>
+        </div>
+        <div>
+          <label class="form-label">Country</label>
+          <select name="country" class="form-select" required>
+            <option value="">Select Country</option>
+            {% for code, name in countries %}
+            <option value="{{ code }}" {% if code=='IN' %}selected{% endif %}>{{ name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Valid Days <span style="color:#94a3b8; font-weight:400;">(default 365)</span></label>
+          <input name="days" type="number" class="form-control" placeholder="365">
+        </div>
+        <div>
+          <label class="form-label">Signing Root CA</label>
+          <select name="root_ca" class="form-select" required>
+            <option value="">Select Root CA</option>
+            {% for ca in rootcas %}
+            <option value="{{ ca.name }}">{{ ca.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-primary" type="submit">Generate</button>
+        <button type="button" class="btn-outline-soft" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn-accent" type="submit">Generate</button>
       </div>
     </form>
   </div>
@@ -83,17 +133,27 @@
         <h5 class="modal-title">Import SSL Certificate</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-      <div class="modal-body">
-        <input name="name" class="form-control mb-2" placeholder="Name" required>
-        <label class="form-label">Certificate (.pem)</label>
-        <input type="file" name="cert" class="form-control mb-2" required>
-        <label class="form-label">Private Key (.pem)</label>
-        <input type="file" name="key" class="form-control mb-2" required>
-        <label class="form-label">Signed By (Root CA Name)</label>
-        <input name="root_ca" class="form-control" placeholder="Root CA Name" required>
+      <div class="modal-body" style="display:flex; flex-direction:column; gap:0.85rem;">
+        <div>
+          <label class="form-label">Name</label>
+          <input name="name" class="form-control" placeholder="Identifier for this certificate" required>
+        </div>
+        <div>
+          <label class="form-label">Certificate (.pem)</label>
+          <input type="file" name="cert" class="form-control" required>
+        </div>
+        <div>
+          <label class="form-label">Private Key (.pem)</label>
+          <input type="file" name="key" class="form-control" required>
+        </div>
+        <div>
+          <label class="form-label">Signed By (Root CA Name)</label>
+          <input name="root_ca" class="form-control" placeholder="Root CA name" required>
+        </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-success">Import</button>
+        <button type="button" class="btn-outline-soft" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn-accent" type="submit">Import</button>
       </div>
     </form>
   </div>
@@ -104,16 +164,20 @@
   <div class="modal-dialog">
     <form class="modal-content" method="POST" action="{{ url_for('delete_ssl') }}">
       <div class="modal-header">
-        <h5 class="modal-title">Delete SSL Certificate</h5>
+        <h5 class="modal-title" style="color:#dc2626;">Delete SSL Certificate</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
+        <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:0.75rem 1rem; margin-bottom:1rem; font-size:0.82rem; color:#b91c1c;">
+          This action is irreversible. All files for this certificate will be permanently deleted.
+        </div>
         <input type="hidden" name="name" id="delete-ssl-name-hidden">
-        <p>Please type <strong id="delete-ssl-name-confirm-label"></strong> to confirm deletion.</p>
-        <input type="text" name="confirm_name" class="form-control" required>
+        <label class="form-label">Type <strong id="delete-ssl-name-confirm-label"></strong> to confirm</label>
+        <input type="text" name="confirm_name" class="form-control" placeholder="Enter name to confirm" required>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-danger">Confirm Delete</button>
+        <button type="button" class="btn-outline-soft" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-danger" style="border-radius:8px; font-size:0.85rem; font-weight:600;" type="submit">Delete</button>
       </div>
     </form>
   </div>
@@ -128,11 +192,13 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <p>Enter the number of days for the new certificate validity:</p>
-        <input name="days" type="number" class="form-control mb-2" placeholder="Valid Days (e.g. 365)">
+        <p style="font-size:0.85rem; color:#64748b; margin-bottom:1rem;">A new certificate will be generated using the existing private key and the same Root CA.</p>
+        <label class="form-label">Valid Days <span style="color:#94a3b8; font-weight:400;">(default 365)</span></label>
+        <input name="days" type="number" class="form-control" placeholder="365">
       </div>
       <div class="modal-footer">
-        <button class="btn btn-warning">Reissue</button>
+        <button type="button" class="btn-outline-soft" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn" style="background:#d97706; color:#fff; border-radius:8px; font-size:0.85rem; font-weight:600;" type="submit">Reissue</button>
       </div>
     </form>
   </div>
@@ -141,18 +207,15 @@
 <script>
   const deleteModal = document.getElementById('deleteModal');
   deleteModal.addEventListener('show.bs.modal', event => {
-    const button = event.relatedTarget;
-    const name = button.getAttribute('data-name');
+    const name = event.relatedTarget.getAttribute('data-name');
     document.getElementById('delete-ssl-name-hidden').value = name;
     document.getElementById('delete-ssl-name-confirm-label').textContent = name;
   });
 
   const reissueModal = document.getElementById('reissueModal');
   reissueModal.addEventListener('show.bs.modal', event => {
-    const button = event.relatedTarget;
-    const name = button.getAttribute('data-name');
-    const form = document.getElementById('reissue-ssl-form');
-    form.action = `/ssl/reissue/${encodeURIComponent(name)}`;
+    const name = event.relatedTarget.getAttribute('data-name');
+    document.getElementById('reissue-ssl-form').action = `/ssl/reissue/${encodeURIComponent(name)}`;
   });
 </script>
 {% endblock %}

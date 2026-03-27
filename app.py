@@ -21,6 +21,7 @@ precheckes()
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 year in seconds
 
 @app.before_request
 def redirect_http_to_https():
@@ -523,4 +524,4 @@ def import_ssl():
     return redirect(url_for("ssl_page"))
 
 if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=8080, ssl_context=(CERT_PATH, KEY_PATH))
+    app.run(debug=True, host="0.0.0.0", port=8080, ssl_context=(CERT_PATH, KEY_PATH))
