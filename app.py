@@ -25,7 +25,12 @@ from utils.db import get_db
 precheckes()
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
+_secret = os.environ.get("SECRET_KEY")
+if not _secret:
+    import warnings
+    warnings.warn("SECRET_KEY env var not set — using a random key. Sessions will not survive restarts.")
+    _secret = os.urandom(24)
+app.secret_key = _secret
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 year in seconds
 
 @app.context_processor

@@ -1,8 +1,8 @@
 flask
+gunicorn
 python-dotenv
 bcrypt
 cryptography
-serialization
 pycountry
 pyotp
 qrcode[pil]

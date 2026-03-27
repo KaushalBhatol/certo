@@ -6,7 +6,17 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - .:/app
-      - ./data:/app/data
+      - certo_data:/app/data
     environment:
-      - FLASK_ENV=development
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in .env}
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-2}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, ssl; ctx=ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE; urllib.request.urlopen('https://localhost:8080/', context=ctx, timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  certo_data:

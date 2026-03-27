@@ -1,21 +1,21 @@
-# Use the official Python image as a base
-FROM python:3.9-slim
+FROM python:3.12-slim
 
-# Set the working directory
 WORKDIR /app
 
-# Copy requirements and install dependencies
+# Install dependencies first (layer cache friendly)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application code
+# Copy application code
 COPY . .
 
-# Copy data directory
-COPY ./data /app/data
+# Create a non-root user and own the app directory
+RUN adduser --disabled-password --gecos "" certouser \
+ && mkdir -p data \
+ && chown -R certouser:certouser /app
 
-# Expose the port the app runs on
+USER certouser
+
 EXPOSE 8080
 
-# Command to run the application
-CMD ["python", "app.py"]
+ENTRYPOINT ["sh", "docker-entrypoint.sh"]
