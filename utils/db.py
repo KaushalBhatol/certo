@@ -61,5 +61,17 @@ def init_db():
         )
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        username TEXT NOT NULL,
+        ip_address TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target TEXT DEFAULT '',
+        details TEXT DEFAULT ''
+    )
+    """)
+
     conn.commit()
     conn.close()

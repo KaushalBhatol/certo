@@ -49,6 +49,25 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def _get_ip():
+    return request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
+
+def _audit_log(action, target="", details=""):
+    """Write one audit log entry and purge records older than 3 months."""
+    username = session.get("username", "anonymous")
+    ip = _get_ip()
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO audit_logs (timestamp, username, ip_address, action, target, details) VALUES (?,?,?,?,?,?)",
+        (now, username, ip, action, target, details)
+    )
+    # Keep only last 3 months
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S UTC")
+    conn.execute("DELETE FROM audit_logs WHERE timestamp < ?", (cutoff,))
+    conn.commit()
+    conn.close()
+
 def _cert_details(cert_obj):
     """Return a dict of human-readable fields from an x509 cert object."""
     def attr(name_obj, oid):
@@ -182,13 +201,27 @@ def login():
                 return redirect(url_for("mfa_verify"))
             session["username"] = user["username"]
             session["role"] = user["role"]
+            _audit_log("Login Success", target=user["username"])
             return redirect(url_for("home"))
 
+        # Log password failure (username may not exist — log the attempted username)
+        ip = _get_ip()
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        conn2 = get_db()
+        conn2.execute(
+            "INSERT INTO audit_logs (timestamp, username, ip_address, action, target, details) VALUES (?,?,?,?,?,?)",
+            (now, username or "unknown", ip, "Password Authentication Failed", "", "")
+        )
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S UTC")
+        conn2.execute("DELETE FROM audit_logs WHERE timestamp < ?", (cutoff,))
+        conn2.commit()
+        conn2.close()
         flash("Invalid credentials", "error")
     return render_template("login.html", username=username)
 
 @app.route("/logout")
 def logout():
+    _audit_log("Logout")
     session.clear()
     return redirect(url_for("login"))
 
@@ -227,9 +260,15 @@ def settings():
             hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
             conn.execute("UPDATE users SET password_hash = ? WHERE username = ?",
                          (hashed, session["username"]))
+            conn.commit()
+            conn.close()
+            _audit_log("Password Changed")
+            flash("Settings saved.", "success")
+            return redirect(url_for("settings"))
 
         conn.commit()
         conn.close()
+        _audit_log("Profile Updated")
         flash("Settings saved.", "success")
         return redirect(url_for("settings"))
 
@@ -258,6 +297,7 @@ def mfa_verify():
             session.pop("mfa_pending_role")
             session["username"] = user["username"]
             session["role"] = user["role"]
+            _audit_log("Login Success", target=user["username"], details="MFA verified")
             return redirect(url_for("home"))
 
         # Try backup code
@@ -273,10 +313,22 @@ def mfa_verify():
                 session.pop("mfa_pending_role")
                 session["username"] = user["username"]
                 session["role"] = user["role"]
+                _audit_log("Login Success", target=user["username"], details="MFA backup code used")
                 flash("Backup code used. Please generate new backup codes.", "warning")
                 return redirect(url_for("home"))
 
         conn.close()
+        ip = _get_ip()
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        conn2 = get_db()
+        conn2.execute(
+            "INSERT INTO audit_logs (timestamp, username, ip_address, action, target, details) VALUES (?,?,?,?,?,?)",
+            (now, username, ip, "MFA Authentication Failed", "", "")
+        )
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S UTC")
+        conn2.execute("DELETE FROM audit_logs WHERE timestamp < ?", (cutoff,))
+        conn2.commit()
+        conn2.close()
         flash("Invalid code. Please try again.", "error")
 
     return render_template("mfa_verify.html")
@@ -316,6 +368,7 @@ def mfa_setup():
 
         session.pop("mfa_setup_secret", None)
         session["mfa_backup_codes"] = plain_codes
+        _audit_log("MFA Enabled")
         return redirect(url_for("mfa_backup_codes"))
 
     # Generate a fresh secret for setup
@@ -359,6 +412,7 @@ def mfa_disable():
     conn.execute("DELETE FROM backup_codes WHERE username = ?", (session["username"],))
     conn.commit()
     conn.close()
+    _audit_log("MFA Disabled")
     flash("MFA has been disabled.", "success")
     return redirect(url_for("settings"))
 
@@ -391,6 +445,7 @@ def import_rootca():
     conn.commit()
     conn.close()
 
+    _audit_log("Imported Root CA", target=name)
     flash("Certificate imported", "success")
     return redirect(url_for("rootca"))
 
@@ -462,6 +517,7 @@ def create_rootca():
     conn.commit()
     conn.close()
 
+    _audit_log("Created Root CA", target=name)
     flash("New Root CA created", "success")
     return redirect(url_for("rootca"))
 
@@ -505,6 +561,7 @@ def reissue_rootca(name):
     with open(cert_path, "wb") as f:
         f.write(cert.public_bytes(serialization.Encoding.PEM))
 
+    _audit_log("Reissued Root CA", target=name)
     flash(f"Certificate for {name} reissued successfully", "success")
     return redirect(url_for("rootca"))
 
@@ -550,6 +607,7 @@ def view_rootca(name):
     pem_files = {"Certificate": open(cert_path).read()}
     if os.path.exists(key_path):
         pem_files["Private Key"] = open(key_path).read()
+    _audit_log("Viewed Root CA", target=name, details=", ".join(pem_files.keys()))
     return render_template("cert_detail.html", name=name, cert_type="Root CA",
                            details=details, pem_files=pem_files,
                            back_url=url_for("rootca"),
@@ -567,6 +625,7 @@ def export_cert(name):
         flash("Certificate files not found", "error")
         return redirect(url_for("rootca"))
 
+    _audit_log("Exported Root CA", target=name)
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w") as zipf:
         zipf.write(cert_path, arcname=f"{name}_cert.pem")
@@ -600,6 +659,7 @@ def delete_rootca():
     conn.commit()
     conn.close()
 
+    _audit_log("Deleted Root CA", target=name)
     flash(f"Deleted Root CA: {name}", "success")
     return redirect(url_for("rootca"))
 
@@ -684,6 +744,7 @@ def view_ssl(name):
         pem_files["Private Key"] = open(key_path).read()
     if os.path.exists(fullchain_path):
         pem_files["Full Chain"] = open(fullchain_path).read()
+    _audit_log("Viewed SSL Certificate", target=name, details=", ".join(pem_files.keys()))
     return render_template("cert_detail.html", name=name, cert_type="SSL Certificate",
                            details=details, pem_files=pem_files,
                            back_url=url_for("ssl_page"),
@@ -808,6 +869,7 @@ def create_ssl():
     with open(meta_path, "w") as f:
         f.write(selected_ca)
 
+    _audit_log("Created SSL Certificate", target=name)
     flash(f"SSL certificate '{name}' created successfully.", "success")
     return redirect(url_for("ssl_page"))
 
@@ -828,6 +890,7 @@ def export_ssl(name):
         flash("SSL certificate files not found.", "error")
         return redirect(url_for("ssl_page"))
 
+    _audit_log("Exported SSL Certificate", target=name)
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w") as zipf:
         zipf.write(cert_path, arcname=f"{name}_cert.pem")
@@ -928,6 +991,7 @@ def reissue_ssl(name):
         f.write(cert.public_bytes(serialization.Encoding.PEM))
         f.write(ca_cert.public_bytes(serialization.Encoding.PEM))
 
+    _audit_log("Reissued SSL Certificate", target=name)
     flash(f"Reissued SSL certificate '{name}' successfully.", "success")
     return redirect(url_for("ssl_page"))
 
@@ -945,6 +1009,7 @@ def delete_ssl():
     if os.path.exists(ssl_path):
         import shutil
         shutil.rmtree(ssl_path)
+        _audit_log("Deleted SSL Certificate", target=name)
         flash(f"Deleted SSL certificate: {name}", "success")
     else:
         flash("SSL certificate not found.", "error")
@@ -972,8 +1037,35 @@ def import_ssl():
     with open(os.path.join(save_dir, "meta.txt"), "w") as f:
         f.write(root_ca)
 
+    _audit_log("Imported SSL Certificate", target=name, details=f"Root CA: {root_ca}")
     flash(f"SSL certificate '{name}' imported.", "success")
     return redirect(url_for("ssl_page"))
+
+@app.route("/admin/activity-trail")
+@admin_required
+def activity_trail():
+    per_page = 50
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    offset = (page - 1) * per_page
+
+    conn = get_db()
+    total = conn.execute("SELECT COUNT(*) FROM audit_logs").fetchone()[0]
+    logs = conn.execute(
+        "SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+        (per_page, offset)
+    ).fetchall()
+    conn.close()
+
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    return render_template("activity_trail.html", logs=logs, page=page,
+                           total_pages=total_pages, total=total)
+
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template("404.html"), 404
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8080, ssl_context=(CERT_PATH, KEY_PATH))

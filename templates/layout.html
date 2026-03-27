@@ -514,6 +514,31 @@
               SSL Certificates
             </a>
           </li>
+          {% if session.get('role') == 'admin' %}
+          <li class="nav-item" style="margin-top:0.5rem;">
+            <div class="nav-link nav-group-toggle" id="adminToggle" onclick="toggleAdminMenu()" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; user-select:none;">
+              <span style="display:flex; align-items:center; gap:0.6rem;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+                </svg>
+                Admin Settings
+              </span>
+              <svg id="adminChevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 0.2s; flex-shrink:0;">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </div>
+            <ul id="adminSubmenu" style="list-style:none; padding:0 0 0 2.2rem; margin:0; display:{% if request.endpoint in ['activity_trail'] %}block{% else %}none{% endif %};">
+              <li>
+                <a class="nav-link {% if request.endpoint == 'activity_trail' %}active{% endif %}" href="{{ url_for('activity_trail') }}" style="padding:0.4rem 0.6rem; font-size:0.82rem;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+                  </svg>
+                  Activity Trail
+                </a>
+              </li>
+            </ul>
+          </li>
+          {% endif %}
         </ul>
       </nav>
 
@@ -586,6 +611,23 @@
       if (wrap) {
         setTimeout(() => { wrap.style.opacity = '0'; wrap.style.transition = 'opacity 0.3s'; }, 4700);
         setTimeout(() => wrap.remove(), 5000);
+      }
+    });
+  </script>
+  <script>
+    function toggleAdminMenu() {
+      const menu = document.getElementById('adminSubmenu');
+      const chevron = document.getElementById('adminChevron');
+      const open = menu.style.display === 'block';
+      menu.style.display = open ? 'none' : 'block';
+      chevron.style.transform = open ? '' : 'rotate(180deg)';
+    }
+    // Auto-open if on an admin sub-page
+    window.addEventListener('DOMContentLoaded', () => {
+      const menu = document.getElementById('adminSubmenu');
+      if (menu && menu.style.display === 'block') {
+        const chevron = document.getElementById('adminChevron');
+        if (chevron) chevron.style.transform = 'rotate(180deg)';
       }
     });
   </script>
