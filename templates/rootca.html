@@ -85,25 +85,39 @@
           <input name="name" class="form-control" placeholder="e.g. My Internal CA" required>
         </div>
         <div>
-          <label class="form-label">Country</label>
-          <select name="country" class="form-select" required>
-            <option value="">Select Country</option>
-            {% for code, name in countries %}
-            <option value="{{ code }}" {% if code=='IN' %}selected{% endif %}>{{ name }}</option>
-            {% endfor %}
-          </select>
+          <label class="form-label">Common Name</label>
+          <input name="common_name" class="form-control" placeholder="e.g. Acme Root CA" required>
         </div>
         <div>
           <label class="form-label">Organization</label>
           <input name="org" class="form-control" placeholder="e.g. Acme Corp" required>
         </div>
         <div>
-          <label class="form-label">Common Name</label>
-          <input name="common_name" class="form-control" placeholder="e.g. Acme Root CA" required>
+          <label class="form-label">Organizational Unit <span style="color:#94a3b8; font-weight:400;">(optional)</span></label>
+          <input name="ou" class="form-control" placeholder="e.g. IT Department">
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+          <div>
+            <label class="form-label">Country</label>
+            <select name="country" class="form-select" required>
+              <option value="">Select Country</option>
+              {% for code, cname in countries %}
+              <option value="{{ code }}" {% if code=='IN' %}selected{% endif %}>{{ cname }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="form-label">State / Province <span style="color:#94a3b8; font-weight:400;">(optional)</span></label>
+            <input name="state" class="form-control" placeholder="e.g. Gujarat">
+          </div>
         </div>
         <div>
-          <label class="form-label">Valid Days <span style="color:#94a3b8; font-weight:400;">(default 1825 — 5 years)</span></label>
-          <input name="days" type="number" class="form-control" placeholder="1825">
+          <label class="form-label">Locality / City <span style="color:#94a3b8; font-weight:400;">(optional)</span></label>
+          <input name="locality" class="form-control" placeholder="e.g. Ahmedabad">
+        </div>
+        <div>
+          <label class="form-label">Expiry Date</label>
+          <input name="expiry_date" type="date" id="ca-create-expiry" class="form-control" required>
         </div>
       </div>
       <div class="modal-footer">
@@ -178,8 +192,8 @@
       </div>
       <div class="modal-body">
         <p style="font-size:0.85rem; color:#64748b; margin-bottom:1rem;">A new certificate will be generated using the existing private key.</p>
-        <label class="form-label">Valid Days <span style="color:#94a3b8; font-weight:400;">(default 365)</span></label>
-        <input name="days" type="number" class="form-control" placeholder="365">
+        <label class="form-label">New Expiry Date</label>
+        <input name="expiry_date" type="date" id="ca-reissue-expiry" class="form-control" required>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn-outline-soft" data-bs-dismiss="modal">Cancel</button>
@@ -190,6 +204,24 @@
 </div>
 
 <script>
+  function isoDate(d) { return d.toISOString().split('T')[0]; }
+  function addYears(n) { const d = new Date(); d.setFullYear(d.getFullYear() + n); return d; }
+  function tomorrow() { const d = new Date(); d.setDate(d.getDate() + 1); return d; }
+
+  const minDate = isoDate(tomorrow());
+
+  const createExpiry = document.getElementById('ca-create-expiry');
+  if (createExpiry) {
+    createExpiry.min = minDate;
+    createExpiry.value = isoDate(addYears(5));
+  }
+
+  const reissueExpiry = document.getElementById('ca-reissue-expiry');
+  if (reissueExpiry) {
+    reissueExpiry.min = minDate;
+    reissueExpiry.value = isoDate(addYears(5));
+  }
+
   const deleteModal = document.getElementById('deleteModal');
   deleteModal.addEventListener('show.bs.modal', event => {
     const name = event.relatedTarget.getAttribute('data-name');

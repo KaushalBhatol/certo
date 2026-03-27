@@ -88,7 +88,10 @@
           <select name="root_ca" id="ssl-ca-select" class="form-select" required>
             <option value="">Select Root CA</option>
             {% for ca in rootcas %}
-            <option value="{{ ca.name }}" data-org="{{ ca.org }}" data-country="{{ ca.country }}">{{ ca.name }}</option>
+            <option value="{{ ca.name }}"
+              data-org="{{ ca.org }}" data-country="{{ ca.country }}"
+              data-state="{{ ca.state }}" data-locality="{{ ca.locality }}"
+              data-ou="{{ ca.ou }}">{{ ca.name }}</option>
             {% endfor %}
           </select>
         </div>
@@ -109,8 +112,8 @@
           <div style="font-size:0.75rem; color:#64748b; margin-top:0.3rem;">The Common Name is always included. Add extra hostnames or IPs here.</div>
         </div>
         <div>
-          <label class="form-label">Valid Days <span style="color:#94a3b8; font-weight:400;">(default 365)</span></label>
-          <input name="days" type="number" class="form-control" placeholder="365">
+          <label class="form-label">Expiry Date</label>
+          <input name="expiry_date" type="date" id="ssl-create-expiry" class="form-control" required>
         </div>
       </div>
       <div class="modal-footer">
@@ -208,8 +211,8 @@
       </div>
       <div class="modal-body">
         <p style="font-size:0.85rem; color:#64748b; margin-bottom:1rem;">A new certificate will be generated using the existing private key and the same Root CA.</p>
-        <label class="form-label">Valid Days <span style="color:#94a3b8; font-weight:400;">(default 365)</span></label>
-        <input name="days" type="number" class="form-control" placeholder="365">
+        <label class="form-label">New Expiry Date</label>
+        <input name="expiry_date" type="date" id="ssl-reissue-expiry" class="form-control" required>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn-outline-soft" data-bs-dismiss="modal">Cancel</button>
@@ -220,6 +223,24 @@
 </div>
 
 <script>
+  function isoDate(d) { return d.toISOString().split('T')[0]; }
+  function addYears(n) { const d = new Date(); d.setFullYear(d.getFullYear() + n); return d; }
+  function tomorrow() { const d = new Date(); d.setDate(d.getDate() + 1); return d; }
+
+  const minDate = isoDate(tomorrow());
+
+  const createExpiry = document.getElementById('ssl-create-expiry');
+  if (createExpiry) {
+    createExpiry.min = minDate;
+    createExpiry.value = isoDate(addYears(1));
+  }
+
+  const reissueExpiry = document.getElementById('ssl-reissue-expiry');
+  if (reissueExpiry) {
+    reissueExpiry.min = minDate;
+    reissueExpiry.value = isoDate(addYears(1));
+  }
+
   const deleteModal = document.getElementById('deleteModal');
   deleteModal.addEventListener('show.bs.modal', event => {
     const name = event.relatedTarget.getAttribute('data-name');
@@ -239,10 +260,12 @@
       const opt = caSelect.options[caSelect.selectedIndex];
       const preview = document.getElementById('ssl-ca-preview');
       const previewText = document.getElementById('ssl-ca-preview-text');
-      const org = opt.dataset.org;
-      const country = opt.dataset.country;
-      if (opt.value && (org || country)) {
-        previewText.textContent = `Organization and country will be inherited from this CA: ${org || '—'} · ${country || '—'}`;
+      const fields = [
+        opt.dataset.country, opt.dataset.state, opt.dataset.locality,
+        opt.dataset.org, opt.dataset.ou
+      ].filter(Boolean);
+      if (opt.value && fields.length) {
+        previewText.textContent = `Subject fields inherited from CA: ${fields.join(' · ')}`;
         preview.style.display = 'block';
       } else {
         preview.style.display = 'none';

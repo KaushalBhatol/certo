@@ -49,6 +49,14 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def _days_until(expiry_date_str, fallback=365):
+    """Convert a YYYY-MM-DD expiry date string to days from now."""
+    try:
+        exp = datetime.strptime(expiry_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        return max(1, (exp - datetime.now(timezone.utc)).days)
+    except (ValueError, TypeError):
+        return fallback
+
 @app.route("/")
 def home():
     if "username" not in session:
@@ -290,9 +298,12 @@ def import_rootca():
 def create_rootca():
     name = request.form.get("name")
     country = request.form.get("country", "US")
+    state = request.form.get("state", "").strip()
+    locality = request.form.get("locality", "").strip()
     org = request.form.get("org", "Certo")
+    ou = request.form.get("ou", "").strip()
     common_name = request.form.get("common_name", "localhost")
-    days = int(request.form.get("days") or 1825)
+    days = _days_until(request.form.get("expiry_date"), fallback=1825)
 
     if not name:
         flash("Name required", "error")
@@ -303,11 +314,16 @@ def create_rootca():
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, country),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, org),
-        x509.NameAttribute(NameOID.COMMON_NAME, common_name),
-    ])
+    name_attrs = [x509.NameAttribute(NameOID.COUNTRY_NAME, country)]
+    if state:
+        name_attrs.append(x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, state))
+    if locality:
+        name_attrs.append(x509.NameAttribute(NameOID.LOCALITY_NAME, locality))
+    name_attrs.append(x509.NameAttribute(NameOID.ORGANIZATION_NAME, org))
+    if ou:
+        name_attrs.append(x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, ou))
+    name_attrs.append(x509.NameAttribute(NameOID.COMMON_NAME, common_name))
+    subject = issuer = x509.Name(name_attrs)
 
     now = datetime.now(timezone.utc)
     cert = x509.CertificateBuilder() \
@@ -355,7 +371,7 @@ def reissue_rootca(name):
     ca_dir = os.path.join("data", "rootca", safe_name)
     key_path = os.path.join(ca_dir, "key.pem")
     cert_path = os.path.join(ca_dir, "cert.pem")
-    days = int(request.form.get("days") or 365)
+    days = _days_until(request.form.get("expiry_date"), fallback=1825)
 
     if not os.path.exists(key_path):
         flash("Private key not found. Cannot reissue.", "error")
@@ -485,7 +501,11 @@ def ssl_page():
                 ca_cert_obj = x509.load_pem_x509_certificate(f.read())
             org = _attr(ca_cert_obj.subject, NameOID.ORGANIZATION_NAME)
             country = _attr(ca_cert_obj.subject, NameOID.COUNTRY_NAME)
-        rootcas.append({"name": row["name"], "org": org, "country": country})
+            state = _attr(ca_cert_obj.subject, NameOID.STATE_OR_PROVINCE_NAME)
+            locality = _attr(ca_cert_obj.subject, NameOID.LOCALITY_NAME)
+            ou = _attr(ca_cert_obj.subject, NameOID.ORGANIZATIONAL_UNIT_NAME)
+        rootcas.append({"name": row["name"], "org": org, "country": country,
+                        "state": state, "locality": locality, "ou": ou})
     certs = []
 
     ssl_dir = os.path.join("data", "ssl")
@@ -518,7 +538,7 @@ def ssl_page():
 def create_ssl():
     name = request.form.get("name")
     common_name = request.form.get("common_name")
-    days = int(request.form.get("days") or 365)
+    days = _days_until(request.form.get("expiry_date"), fallback=365)
     selected_ca = request.form.get("root_ca")
     sans_raw = request.form.get("sans", "")
 
@@ -549,18 +569,26 @@ def create_ssl():
         attrs = name_obj.get_attributes_for_oid(oid)
         return attrs[0].value if attrs else default
 
-    org = _attr(ca_cert.subject, NameOID.ORGANIZATION_NAME, "Certo")
     country = _attr(ca_cert.subject, NameOID.COUNTRY_NAME, "US")
+    state = _attr(ca_cert.subject, NameOID.STATE_OR_PROVINCE_NAME)
+    locality = _attr(ca_cert.subject, NameOID.LOCALITY_NAME)
+    org = _attr(ca_cert.subject, NameOID.ORGANIZATION_NAME, "Certo")
+    ou = _attr(ca_cert.subject, NameOID.ORGANIZATIONAL_UNIT_NAME)
 
     # Generate private key
     ssl_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
-    # Build subject name
-    subject = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, country),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, org),
-        x509.NameAttribute(NameOID.COMMON_NAME, common_name),
-    ])
+    # Build subject name (inherit full identity from CA, only CN is specific to this cert)
+    ssl_name_attrs = [x509.NameAttribute(NameOID.COUNTRY_NAME, country)]
+    if state:
+        ssl_name_attrs.append(x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, state))
+    if locality:
+        ssl_name_attrs.append(x509.NameAttribute(NameOID.LOCALITY_NAME, locality))
+    ssl_name_attrs.append(x509.NameAttribute(NameOID.ORGANIZATION_NAME, org))
+    if ou:
+        ssl_name_attrs.append(x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, ou))
+    ssl_name_attrs.append(x509.NameAttribute(NameOID.COMMON_NAME, common_name))
+    subject = x509.Name(ssl_name_attrs)
 
     # Build SAN list — always include CN, plus any extra entries from the form
     san_entries = []
@@ -669,7 +697,7 @@ def export_ssl(name):
 def reissue_ssl(name):
     safe_name = secure_filename(name)
     ssl_dir = os.path.join("data", "ssl", safe_name)
-    days = int(request.form.get("days") or 365)
+    days = _days_until(request.form.get("expiry_date"), fallback=365)
 
     key_path = os.path.join(ssl_dir, "key.pem")
     cert_path = os.path.join(ssl_dir, "cert.pem")
