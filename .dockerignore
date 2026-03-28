@@ -1,25 +1,33 @@
-# Ignore Python cache files
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
-data
+*.pyd
 
-# Ignore environment files
-.env
+# Data (mounted as a volume at runtime)
+data/
 
-# Ignore logs
-*.log
-
-# Ignore virtual environments
+# Virtual environment
 venv/
+.venv/
 
-# Ignore git files
-.git
+# Environment files
+.env
+.env.*
+
+# Git
+.git/
 .gitignore
 
-# Ignore IDE files
+# IDE
 .vscode/
+.idea/
 
-# Ignore Docker files
-Dockerfile
-docker-compose.yml
+# Logs
+*.log
+
+# Backup
+backup/
+
+# Docs
+*.md

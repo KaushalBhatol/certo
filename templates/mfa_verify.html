@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Two-Factor Authentication — CERTO</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0f172a;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    .wrap {
+      width: 100%;
+      max-width: 380px;
+      padding: 1.5rem;
+    }
+
+    .brand {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .brand-icon {
+      width: 52px;
+      height: 52px;
+      background: #6366f1;
+      border-radius: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 0.85rem;
+      box-shadow: 0 4px 20px rgba(99,102,241,0.4);
+    }
+
+    .brand h4 {
+      color: #f8fafc;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      margin: 0 0 0.2rem;
+      font-size: 1.1rem;
+    }
+
+    .brand p {
+      color: #475569;
+      font-size: 0.82rem;
+      margin: 0;
+    }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 2rem;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+    }
+
+    .step { display: none; }
+    .step.active { display: block; }
+
+    .user-pill {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 0.65rem 0.9rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .user-pill .avatar {
+      width: 30px;
+      height: 30px;
+      background: #312e81;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .user-pill .uname {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+
+    .step-title {
+      color: #f1f5f9;
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 0.35rem;
+    }
+
+    .step-sub {
+      color: #475569;
+      font-size: 0.8rem;
+      margin-bottom: 1.5rem;
+      line-height: 1.5;
+    }
+
+    .btn-main {
+      width: 100%;
+      background: #6366f1;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.6rem;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+
+    .btn-main:hover {
+      background: #4f46e5;
+      box-shadow: 0 4px 14px rgba(99,102,241,0.4);
+    }
+
+    .form-label {
+      color: #94a3b8;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.35rem;
+      display: block;
+    }
+
+    /* OTP digit boxes */
+    .otp-wrap {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .otp-wrap input {
+      width: 44px;
+      height: 52px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #f1f5f9;
+      font-size: 1.3rem;
+      font-weight: 700;
+      text-align: center;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .otp-wrap input:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.2);
+    }
+
+    .otp-hidden {
+      display: none;
+    }
+
+    .form-control {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #f1f5f9;
+      font-size: 1rem;
+      letter-spacing: 0.15em;
+      text-align: center;
+      padding: 0.6rem 0.85rem;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .form-control:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.2);
+    }
+
+    .form-control::placeholder { color: #334155; }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.78rem;
+      color: #475569;
+      text-decoration: none;
+      margin-bottom: 1.25rem;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+
+    .back-link:hover { color: #94a3b8; }
+
+    .hint {
+      text-align: center;
+      margin-top: 1rem;
+      font-size: 0.78rem;
+      color: #475569;
+    }
+
+    .hint a { color: #818cf8; text-decoration: none; }
+    .hint a:hover { color: #a5b4fc; }
+
+    @keyframes slideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7z"/>
+        </svg>
+      </div>
+      <h4>CERTO</h4>
+      <p>Two-Factor Authentication</p>
+    </div>
+
+    <div class="card">
+
+
+      <!-- Step 1: Continue -->
+      <div class="step active" id="step1">
+        <div class="user-pill">
+          <div class="avatar">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a5b4fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+            </svg>
+          </div>
+          <span class="uname">{{ session.get('mfa_pending_username', '') }}</span>
+        </div>
+        <div class="step-title">Verify it's you</div>
+        <div class="step-sub">Your account is protected with two-factor authentication. Continue to enter your code.</div>
+        <button class="btn-main" onclick="goStep(2)">Continue</button>
+      </div>
+
+      <!-- Step 2: TOTP input -->
+      <div class="step" id="step2">
+        <button class="back-link" onclick="goStep(1)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          Back
+        </button>
+        <div class="step-title">Enter your 6-digit code</div>
+        <div class="step-sub">Open your authenticator app and enter the code shown for Certo.</div>
+        <form method="POST" onsubmit="collectOtp()">
+          <div class="otp-wrap">
+            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]">
+            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]">
+            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]">
+            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]">
+            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]">
+            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]">
+          </div>
+          <input type="hidden" name="code" id="otpHidden">
+          <button type="submit" class="btn-main">Verify</button>
+        </form>
+        <div class="hint">
+          Lost your device? Use a <a href="#" onclick="goBackup(event)">backup code</a>.
+        </div>
+      </div>
+
+      <!-- Step 3: Backup code -->
+      <div class="step" id="step3">
+        <button class="back-link" onclick="goStep(2)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          Back
+        </button>
+        <div class="step-title">Enter a backup code</div>
+        <div class="step-sub">Use one of the backup codes you saved when you set up MFA.</div>
+        <form method="POST">
+          <label class="form-label">Backup Code</label>
+          <input name="code" class="form-control" placeholder="XXXXXX-XXXXXX" autocomplete="off" required style="margin-bottom:1.25rem;">
+          <button type="submit" class="btn-main">Verify</button>
+        </form>
+      </div>
+
+    </div>
+
+    <div style="text-align:center; margin-top:1.25rem;">
+      <a href="{{ url_for('login') }}" style="font-size:0.78rem; color:#475569; text-decoration:none;">← Back to login</a>
+    </div>
+  </div>
+
+  <script>
+    // If there was a flash error, jump straight to step 2
+    {% if get_flashed_messages() %}
+    {% endif %}
+
+    function goStep(n) {
+      document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+      document.getElementById('step' + n).classList.add('active');
+      if (n === 2) {
+        const first = document.querySelector('.otp-box');
+        if (first) setTimeout(() => first.focus(), 50);
+      }
+    }
+
+    function goBackup(e) {
+      e.preventDefault();
+      goStep(3);
+    }
+
+    // OTP box auto-advance
+    document.querySelectorAll('.otp-box').forEach((box, i, boxes) => {
+      box.addEventListener('input', () => {
+        box.value = box.value.replace(/\D/g, '').slice(-1);
+        if (box.value && i < boxes.length - 1) boxes[i + 1].focus();
+      });
+      box.addEventListener('keydown', e => {
+        if (e.key === 'Backspace' && !box.value && i > 0) boxes[i - 1].focus();
+      });
+      box.addEventListener('paste', e => {
+        e.preventDefault();
+        const digits = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+        [...digits].forEach((d, j) => { if (boxes[j]) boxes[j].value = d; });
+        const next = boxes[Math.min(digits.length, boxes.length - 1)];
+        if (next) next.focus();
+      });
+    });
+
+    function collectOtp() {
+      const val = [...document.querySelectorAll('.otp-box')].map(b => b.value).join('');
+      document.getElementById('otpHidden').value = val;
+    }
+
+    // Go straight to step 2 on load
+    window.addEventListener('DOMContentLoaded', () => goStep(2));
+
+    // Show toast if flash message exists
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% set category, message = messages[0] %}
+    window.addEventListener('DOMContentLoaded', () => {
+      const colors = { success:'#16a34a', error:'#dc2626', warning:'#d97706' };
+      const bgs    = { success:'#f0fdf4', error:'#fef2f2', warning:'#fffbeb' };
+      const cat = '{{ category }}';
+      const msg = {{ message | tojson }};
+      const t = document.createElement('div');
+      t.id = 'toast';
+      t.style.cssText = `position:fixed;top:1.25rem;right:1.25rem;z-index:999;
+        background:#fff;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,0.18);
+        padding:0.85rem 1rem;display:flex;align-items:center;gap:0.75rem;
+        min-width:300px;max-width:380px;animation:slideIn 0.22s ease;
+        border-left:4px solid ${colors[cat]||'#6366f1'}`;
+      t.innerHTML = `
+        <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:${bgs[cat]||'#eef2ff'}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="${colors[cat]||'#6366f1'}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <div style="flex:1;font-size:0.85rem;font-weight:500;color:#0f172a;line-height:1.4;">${msg}</div>
+        <button onclick="this.closest('#toast').remove()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:1.2rem;line-height:1;padding:0;">&times;</button>`;
+      document.body.appendChild(t);
+      setTimeout(() => { t.style.transition='opacity 0.3s'; t.style.opacity='0'; setTimeout(()=>t.remove(),300); }, 4700);
+    });
+    {% endif %}
+    {% endwith %}
+  </script>
+</body>
+
+</html>

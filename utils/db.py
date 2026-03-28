@@ -17,7 +17,33 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
-        role TEXT NOT NULL
+        role TEXT NOT NULL,
+        full_name TEXT DEFAULT '',
+        email TEXT DEFAULT ''
+    )
+    """)
+
+    # Migrate existing databases that lack the new columns
+    existing = {row[1] for row in cursor.execute("PRAGMA table_info(users)").fetchall()}
+    if "full_name" not in existing:
+        cursor.execute("ALTER TABLE users ADD COLUMN full_name TEXT DEFAULT ''")
+    if "email" not in existing:
+        cursor.execute("ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''")
+    if "mfa_secret" not in existing:
+        cursor.execute("ALTER TABLE users ADD COLUMN mfa_secret TEXT DEFAULT NULL")
+    if "mfa_enabled" not in existing:
+        cursor.execute("ALTER TABLE users ADD COLUMN mfa_enabled INTEGER DEFAULT 0")
+    if "enabled" not in existing:
+        cursor.execute("ALTER TABLE users ADD COLUMN enabled INTEGER DEFAULT 1")
+    if "auto_logout" not in existing:
+        cursor.execute("ALTER TABLE users ADD COLUMN auto_logout INTEGER DEFAULT 0")
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS backup_codes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        used INTEGER DEFAULT 0
     )
     """)
 
@@ -37,6 +63,27 @@ def init_db():
             path TEXT NOT NULL,
             created_at TEXT NOT NULL
         )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS branding (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        org_name TEXT DEFAULT '',
+        logo_path TEXT DEFAULT ''
+    )
+    """)
+    cursor.execute("INSERT OR IGNORE INTO branding (id, org_name, logo_path) VALUES (1, '', '')")
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        username TEXT NOT NULL,
+        ip_address TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target TEXT DEFAULT '',
+        details TEXT DEFAULT ''
+    )
     """)
 
     conn.commit()

@@ -1,9 +1,10 @@
 import os
+import ipaddress
 from cryptography import x509
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-import datetime
+from datetime import datetime, timedelta, timezone
 import bcrypt
 from utils.db import init_db, get_db
 
@@ -28,9 +29,9 @@ def initialize_user_store():
         password = "certo"
         hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         cursor.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                       ("certo", hashed, "admin"))
+                       ("admin", hashed, "admin"))
         conn.commit()
-        print("✅ Default admin user created: certo / certo")
+        print("✅ Default admin user created: admin / certo")
 
     conn.close()
 
@@ -52,14 +53,19 @@ def generate_self_signed_cert():
             x509.NameAttribute(NameOID.COMMON_NAME, u"localhost"),
         ])
 
+        now = datetime.now(timezone.utc)
         cert = x509.CertificateBuilder() \
             .subject_name(subject) \
             .issuer_name(issuer) \
             .public_key(key.public_key()) \
             .serial_number(x509.random_serial_number()) \
-            .not_valid_before(datetime.datetime.utcnow()) \
-            .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365)) \
-            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True) \
+            .not_valid_before(now) \
+            .not_valid_after(now + timedelta(days=365)) \
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True) \
+            .add_extension(x509.SubjectAlternativeName([
+                x509.DNSName("localhost"),
+                x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+            ]), critical=False) \
             .sign(key, hashes.SHA256())
 
         with open(CERT_PATH, "wb") as f:
