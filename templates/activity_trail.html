@@ -11,6 +11,50 @@
   </div>
 </div>
 
+<!-- Filters -->
+<form method="GET" style="margin-bottom:1.25rem;">
+  <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end;">
+
+    <div style="flex:1; min-width:180px;">
+      <label style="font-size:0.72rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:0.04em; display:block; margin-bottom:0.3rem;">Search</label>
+      <div style="position:relative;">
+        <svg style="position:absolute; left:0.65rem; top:50%; transform:translateY(-50%); color:#94a3b8; pointer-events:none;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input name="q" value="{{ filters.q }}" class="form-control" placeholder="User, action, target…" style="padding-left:2rem; font-size:0.85rem;">
+      </div>
+    </div>
+
+    <div style="min-width:155px;">
+      <label style="font-size:0.72rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:0.04em; display:block; margin-bottom:0.3rem;">Category</label>
+      <select name="action_type" class="form-select" style="font-size:0.85rem;">
+        <option value=""      {% if not filters.action_type %}selected{% endif %}>All Categories</option>
+        <option value="auth"  {% if filters.action_type=='auth' %}selected{% endif %}>Auth</option>
+        <option value="rootca"{% if filters.action_type=='rootca' %}selected{% endif %}>Root CA</option>
+        <option value="ssl"   {% if filters.action_type=='ssl' %}selected{% endif %}>SSL Certificate</option>
+        <option value="mfa"   {% if filters.action_type=='mfa' %}selected{% endif %}>MFA</option>
+        <option value="user"  {% if filters.action_type=='user' %}selected{% endif %}>User Management</option>
+      </select>
+    </div>
+
+    <div style="min-width:140px;">
+      <label style="font-size:0.72rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:0.04em; display:block; margin-bottom:0.3rem;">From</label>
+      <input name="date_from" type="date" value="{{ filters.date_from }}" class="form-control" style="font-size:0.85rem;">
+    </div>
+
+    <div style="min-width:140px;">
+      <label style="font-size:0.72rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:0.04em; display:block; margin-bottom:0.3rem;">To</label>
+      <input name="date_to" type="date" value="{{ filters.date_to }}" class="form-control" style="font-size:0.85rem;">
+    </div>
+
+    <div style="display:flex; gap:0.4rem; align-items:flex-end;">
+      <button type="submit" class="btn-accent" style="height:36px; padding:0 1rem; font-size:0.85rem;">Filter</button>
+      {% if filters.q or filters.action_type or filters.date_from or filters.date_to %}
+      <a href="{{ url_for('activity_trail') }}" class="btn-outline-soft" style="height:36px; padding:0 0.85rem; font-size:0.85rem; display:flex; align-items:center; text-decoration:none;">Clear</a>
+      {% endif %}
+    </div>
+
+  </div>
+</form>
+
 {% if logs %}
 <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
   <table style="width:100%; border-collapse:collapse; font-size:0.84rem;">
@@ -29,7 +73,6 @@
       {% set is_failure = 'Failed' in log.action %}
       {% set is_export  = 'Export' in log.action %}
       {% set is_view    = 'View' in log.action %}
-      {% set is_create  = 'Create' in log.action or 'Reissue' in log.action %}
       <tr style="border-bottom:1px solid #f1f5f9; {% if is_failure %}background:#fff8f8;{% endif %}">
         <td style="padding:0.65rem 1rem; color:#64748b; white-space:nowrap; font-size:0.8rem; font-family:monospace;">{{ log.timestamp }}</td>
         <td style="padding:0.65rem 0.75rem;">
@@ -66,6 +109,9 @@
     </tbody>
   </table>
 </div>
+
+{% set qs = '&q=' ~ filters.q ~ '&action_type=' ~ filters.action_type ~ '&date_from=' ~ filters.date_from ~ '&date_to=' ~ filters.date_to %}
+
 {% if total_pages > 1 %}
 <div style="display:flex; align-items:center; justify-content:space-between; margin-top:1.25rem;">
   <div style="font-size:0.8rem; color:#64748b;">
@@ -73,8 +119,8 @@
   </div>
   <div style="display:flex; gap:0.35rem;">
     {% if page > 1 %}
-    <a href="?page=1" style="padding:0.3rem 0.65rem; border:1px solid #e2e8f0; border-radius:6px; font-size:0.8rem; color:#475569; text-decoration:none; background:#fff;">&laquo;</a>
-    <a href="?page={{ page - 1 }}" style="padding:0.3rem 0.65rem; border:1px solid #e2e8f0; border-radius:6px; font-size:0.8rem; color:#475569; text-decoration:none; background:#fff;">&#8249; Prev</a>
+    <a href="?page=1{{ qs }}" style="padding:0.3rem 0.65rem; border:1px solid #e2e8f0; border-radius:6px; font-size:0.8rem; color:#475569; text-decoration:none; background:#fff;">&laquo;</a>
+    <a href="?page={{ page - 1 }}{{ qs }}" style="padding:0.3rem 0.65rem; border:1px solid #e2e8f0; border-radius:6px; font-size:0.8rem; color:#475569; text-decoration:none; background:#fff;">&#8249; Prev</a>
     {% else %}
     <span style="padding:0.3rem 0.65rem; border:1px solid #f1f5f9; border-radius:6px; font-size:0.8rem; color:#cbd5e1; background:#f8fafc;">&laquo;</span>
     <span style="padding:0.3rem 0.65rem; border:1px solid #f1f5f9; border-radius:6px; font-size:0.8rem; color:#cbd5e1; background:#f8fafc;">&#8249; Prev</span>
@@ -87,13 +133,13 @@
       {% if p == page %}
       <span style="padding:0.3rem 0.65rem; border:1px solid var(--accent); border-radius:6px; font-size:0.8rem; font-weight:600; color:#fff; background:var(--accent);">{{ p }}</span>
       {% else %}
-      <a href="?page={{ p }}" style="padding:0.3rem 0.65rem; border:1px solid #e2e8f0; border-radius:6px; font-size:0.8rem; color:#475569; text-decoration:none; background:#fff;">{{ p }}</a>
+      <a href="?page={{ p }}{{ qs }}" style="padding:0.3rem 0.65rem; border:1px solid #e2e8f0; border-radius:6px; font-size:0.8rem; color:#475569; text-decoration:none; background:#fff;">{{ p }}</a>
       {% endif %}
     {% endfor %}
 
     {% if page < total_pages %}
-    <a href="?page={{ page + 1 }}" style="padding:0.3rem 0.65rem; border:1px solid #e2e8f0; border-radius:6px; font-size:0.8rem; color:#475569; text-decoration:none; background:#fff;">Next &#8250;</a>
-    <a href="?page={{ total_pages }}" style="padding:0.3rem 0.65rem; border:1px solid #e2e8f0; border-radius:6px; font-size:0.8rem; color:#475569; text-decoration:none; background:#fff;">&raquo;</a>
+    <a href="?page={{ page + 1 }}{{ qs }}" style="padding:0.3rem 0.65rem; border:1px solid #e2e8f0; border-radius:6px; font-size:0.8rem; color:#475569; text-decoration:none; background:#fff;">Next &#8250;</a>
+    <a href="?page={{ total_pages }}{{ qs }}" style="padding:0.3rem 0.65rem; border:1px solid #e2e8f0; border-radius:6px; font-size:0.8rem; color:#475569; text-decoration:none; background:#fff;">&raquo;</a>
     {% else %}
     <span style="padding:0.3rem 0.65rem; border:1px solid #f1f5f9; border-radius:6px; font-size:0.8rem; color:#cbd5e1; background:#f8fafc;">Next &#8250;</span>
     <span style="padding:0.3rem 0.65rem; border:1px solid #f1f5f9; border-radius:6px; font-size:0.8rem; color:#cbd5e1; background:#f8fafc;">&raquo;</span>
@@ -107,7 +153,12 @@
   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
   </svg>
+  {% if filters.q or filters.action_type or filters.date_from or filters.date_to %}
+  <p>No records match your filters.</p>
+  <a href="{{ url_for('activity_trail') }}" style="font-size:0.85rem; color:#6366f1;">Clear filters</a>
+  {% else %}
   <p>No audit events recorded yet.</p>
+  {% endif %}
 </div>
 {% endif %}
 

@@ -1,5 +1,6 @@
 import os
 import io
+import time
 import base64
 import secrets
 import bcrypt
@@ -40,10 +41,29 @@ def inject_branding():
     conn.close()
     return {"branding": row}
 
+_SESSION_HARD_CAP = 10800  # 3 hours absolute maximum
+
 @app.before_request
 def redirect_http_to_https():
     if not request.is_secure and not app.debug and not request.host.startswith("localhost"):
         return redirect(request.url.replace("http://", "https://", 1), code=301)
+
+@app.before_request
+def check_session_timeout():
+    if request.endpoint in ("login", "logout", "static", "mfa_verify"):
+        return
+    if "username" not in session:
+        return
+    now = time.time()
+    last_active = session.get("last_active")
+    auto_logout = session.get("auto_logout", 0)
+    timeout = auto_logout if auto_logout and auto_logout > 0 else _SESSION_HARD_CAP
+    timeout = min(timeout, _SESSION_HARD_CAP)
+    if last_active and (now - last_active) > timeout:
+        session.clear()
+        flash("Your session has expired. Please log in again.", "warning")
+        return redirect(url_for("login"))
+    session["last_active"] = now
 
 def login_required(f):
     @wraps(f)
@@ -67,9 +87,9 @@ def admin_required(f):
 def _get_ip():
     return request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
 
-def _audit_log(action, target="", details=""):
+def _audit_log(action, target="", details="", actor=None):
     """Write one audit log entry and purge records older than 3 months."""
-    username = session.get("username", "anonymous")
+    username = actor if actor is not None else session.get("username", "anonymous")
     ip = _get_ip()
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     conn = get_db()
@@ -77,7 +97,7 @@ def _audit_log(action, target="", details=""):
         "INSERT INTO audit_logs (timestamp, username, ip_address, action, target, details) VALUES (?,?,?,?,?,?)",
         (now, username, ip, action, target, details)
     )
-    # Keep only last 3 months
+    # Keep only last 3 months (time-based, not count-based)
     cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S UTC")
     conn.execute("DELETE FROM audit_logs WHERE timestamp < ?", (cutoff,))
     conn.commit()
@@ -217,21 +237,12 @@ def login():
                 return redirect(url_for("mfa_verify"))
             session["username"] = user["username"]
             session["role"] = user["role"]
+            session["auto_logout"] = user["auto_logout"] or 0
+            session["last_active"] = time.time()
             _audit_log("Login Success", target=user["username"])
             return redirect(url_for("home"))
 
-        # Log password failure (username may not exist — log the attempted username)
-        ip = _get_ip()
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        conn2 = get_db()
-        conn2.execute(
-            "INSERT INTO audit_logs (timestamp, username, ip_address, action, target, details) VALUES (?,?,?,?,?,?)",
-            (now, username or "unknown", ip, "Password Authentication Failed", "", "")
-        )
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S UTC")
-        conn2.execute("DELETE FROM audit_logs WHERE timestamp < ?", (cutoff,))
-        conn2.commit()
-        conn2.close()
+        _audit_log("Password Authentication Failed", actor=username or "unknown")
         flash("Invalid credentials", "error")
     return render_template("login.html", username=username)
 
@@ -292,6 +303,25 @@ def settings():
     conn.close()
     return render_template("settings.html", user=user)
 
+@app.route("/settings/auto-logout", methods=["POST"])
+@login_required
+def settings_auto_logout():
+    allowed = {0, 900, 1800, 3600, 7200, 10800}
+    try:
+        value = int(request.form.get("auto_logout", 0))
+    except ValueError:
+        value = 0
+    if value not in allowed:
+        value = 0
+    conn = get_db()
+    conn.execute("UPDATE users SET auto_logout = ? WHERE username = ?", (value, session["username"]))
+    conn.commit()
+    conn.close()
+    session["auto_logout"] = value
+    _audit_log("Auto-Logout Updated", details=f"{value}s")
+    flash("Session timeout saved.", "success")
+    return redirect(url_for("settings"))
+
 # ---------- MFA ROUTES ----------
 
 @app.route("/mfa", methods=["GET", "POST"])
@@ -314,6 +344,8 @@ def mfa_verify():
             session.pop("mfa_pending_role")
             session["username"] = user["username"]
             session["role"] = user["role"]
+            session["auto_logout"] = user["auto_logout"] or 0
+            session["last_active"] = time.time()
             _audit_log("Login Success", target=user["username"], details="MFA verified")
             return redirect(url_for("home"))
 
@@ -330,22 +362,14 @@ def mfa_verify():
                 session.pop("mfa_pending_role")
                 session["username"] = user["username"]
                 session["role"] = user["role"]
+                session["auto_logout"] = user["auto_logout"] or 0
+                session["last_active"] = time.time()
                 _audit_log("Login Success", target=user["username"], details="MFA backup code used")
                 flash("Backup code used. Please generate new backup codes.", "warning")
                 return redirect(url_for("home"))
 
         conn.close()
-        ip = _get_ip()
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        conn2 = get_db()
-        conn2.execute(
-            "INSERT INTO audit_logs (timestamp, username, ip_address, action, target, details) VALUES (?,?,?,?,?,?)",
-            (now, username, ip, "MFA Authentication Failed", "", "")
-        )
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S UTC")
-        conn2.execute("DELETE FROM audit_logs WHERE timestamp < ?", (cutoff,))
-        conn2.commit()
-        conn2.close()
+        _audit_log("MFA Authentication Failed", actor=username)
         flash("Invalid code. Please try again.", "error")
 
     return render_template("mfa_verify.html")
@@ -410,6 +434,39 @@ def mfa_backup_codes():
     if not codes:
         return redirect(url_for("settings"))
     return render_template("mfa_backup_codes.html", codes=codes)
+
+
+@app.route("/settings/mfa/reset-backup-codes", methods=["POST"])
+@login_required
+def mfa_reset_backup_codes():
+    password = request.form.get("password", "")
+    conn = get_db()
+    user = conn.execute("SELECT * FROM users WHERE username = ?", (session["username"],)).fetchone()
+
+    if not user["mfa_enabled"]:
+        conn.close()
+        flash("MFA is not enabled.", "error")
+        return redirect(url_for("settings"))
+
+    if not bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
+        conn.close()
+        flash("Incorrect password. Recovery codes were not reset.", "error")
+        return redirect(url_for("settings"))
+
+    plain_codes = [
+        f"{secrets.token_hex(3).upper()}-{secrets.token_hex(3).upper()}"
+        for _ in range(8)
+    ]
+    conn.execute("DELETE FROM backup_codes WHERE username = ?", (session["username"],))
+    for code_plain in plain_codes:
+        code_hash = bcrypt.hashpw(code_plain.replace("-", "").encode(), bcrypt.gensalt()).decode()
+        conn.execute("INSERT INTO backup_codes (username, code_hash) VALUES (?, ?)",
+                     (session["username"], code_hash))
+    conn.commit()
+    conn.close()
+    session["mfa_backup_codes"] = plain_codes
+    _audit_log("MFA Recovery Codes Reset")
+    return redirect(url_for("mfa_backup_codes"))
 
 
 @app.route("/settings/mfa/disable", methods=["POST"])
@@ -1066,19 +1123,58 @@ def activity_trail():
         page = max(1, int(request.args.get("page", 1)))
     except ValueError:
         page = 1
-    offset = (page - 1) * per_page
 
+    q           = request.args.get("q", "").strip()
+    action_type = request.args.get("action_type", "")
+    date_from   = request.args.get("date_from", "").strip()
+    date_to     = request.args.get("date_to", "").strip()
+
+    action_map = {
+        "auth":   ["Login Success", "Logout", "Password Authentication Failed", "MFA Authentication Failed"],
+        "rootca": ["Created Root CA", "Reissued Root CA", "Viewed Root CA", "Exported Root CA", "Deleted Root CA", "Imported Root CA"],
+        "ssl":    ["Created SSL Certificate", "Reissued SSL Certificate", "Viewed SSL Certificate", "Exported SSL Certificate", "Deleted SSL Certificate", "Imported SSL Certificate"],
+        "mfa":    ["MFA Enabled", "MFA Disabled", "MFA Recovery Codes Reset", "Reset User MFA"],
+        "user":   ["Created User", "Edited User", "Deleted User", "Enabled User", "Disabled User", "Reset User Password", "Reset User MFA", "Profile Updated", "Password Changed", "Auto-Logout Updated"],
+    }
+
+    where, params = [], []
+
+    if q:
+        where.append("(username LIKE ? OR action LIKE ? OR target LIKE ? OR details LIKE ?)")
+        like = f"%{q}%"
+        params.extend([like, like, like, like])
+
+    if action_type in action_map:
+        placeholders = ",".join("?" * len(action_map[action_type]))
+        where.append(f"action IN ({placeholders})")
+        params.extend(action_map[action_type])
+
+    if date_from:
+        where.append("timestamp >= ?")
+        params.append(date_from + " 00:00:00 UTC")
+
+    if date_to:
+        where.append("timestamp <= ?")
+        params.append(date_to + " 23:59:59 UTC")
+
+    where_clause = ("WHERE " + " AND ".join(where)) if where else ""
+
+    offset = (page - 1) * per_page
     conn = get_db()
-    total = conn.execute("SELECT COUNT(*) FROM audit_logs").fetchone()[0]
+    total = conn.execute(f"SELECT COUNT(*) FROM audit_logs {where_clause}", params).fetchone()[0]
     logs = conn.execute(
-        "SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ? OFFSET ?",
-        (per_page, offset)
+        f"SELECT * FROM audit_logs {where_clause} ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+        params + [per_page, offset]
     ).fetchall()
     conn.close()
 
     total_pages = max(1, (total + per_page - 1) // per_page)
+    if page > total_pages:
+        page = total_pages
+
+    filters = dict(q=q, action_type=action_type, date_from=date_from, date_to=date_to)
     return render_template("activity_trail.html", logs=logs, page=page,
-                           total_pages=total_pages, total=total)
+                           total_pages=total_pages, total=total, filters=filters)
 
 @app.route("/admin/users")
 @admin_required
@@ -1263,6 +1359,11 @@ def remove_branding_logo():
     _audit_log("Removed Branding Logo")
     flash("Logo removed.", "success")
     return redirect(url_for("admin_branding"))
+
+@app.route("/admin/about")
+@admin_required
+def admin_about():
+    return render_template("admin_about.html")
 
 @app.errorhandler(404)
 def page_not_found(e):

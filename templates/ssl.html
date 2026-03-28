@@ -17,8 +17,33 @@
   </div>
 </div>
 
+<!-- Filters -->
+<div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:1rem;">
+  <div style="flex:1; min-width:180px; position:relative;">
+    <svg style="position:absolute; left:0.65rem; top:50%; transform:translateY(-50%); color:#94a3b8; pointer-events:none;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input id="sslSearch" class="form-control" placeholder="Search certificates…" style="padding-left:2rem; font-size:0.85rem;" oninput="filterSSL()">
+  </div>
+  <div style="min-width:170px;">
+    <select id="sslCAFilter" class="form-select" style="font-size:0.85rem;" onchange="filterSSL()">
+      <option value="">All Root CAs</option>
+      {% for ca in rootcas %}
+      <option value="{{ ca.name }}">{{ ca.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div style="min-width:145px;">
+    <select id="sslStatusFilter" class="form-select" style="font-size:0.85rem;" onchange="filterSSL()">
+      <option value="">All Statuses</option>
+      <option value="valid">Valid</option>
+      <option value="expiring">Expiring Soon (&lt;30d)</option>
+      <option value="expired">Expired</option>
+    </select>
+  </div>
+</div>
+
+<div id="sslList">
 {% for cert in certs %}
-<div class="cert-card">
+<div class="cert-card" data-name="{{ cert.name | lower }}" data-ca="{{ cert.root_ca }}" data-expires="{{ cert.expires }}">
   <div class="cert-icon">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7z"/>
@@ -65,13 +90,18 @@
   </div>
 </div>
 {% else %}
-<div class="empty-state">
+<div class="empty-state" id="sslEmptyState">
   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
     <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7z"/>
   </svg>
   <p>No SSL certificates yet. Create one using a Root CA.</p>
 </div>
 {% endfor %}
+</div>
+<div id="sslNoResults" style="display:none;" class="empty-state">
+  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+  <p>No certificates match your filters.</p>
+</div>
 
 <!-- Create Modal -->
 <div class="modal fade" id="createModal" tabindex="-1">
@@ -225,6 +255,32 @@
 </div>
 
 <script>
+  function filterSSL() {
+    const q      = document.getElementById('sslSearch').value.toLowerCase();
+    const ca     = document.getElementById('sslCAFilter').value;
+    const status = document.getElementById('sslStatusFilter').value;
+    const today  = new Date(); today.setHours(0,0,0,0);
+    const soon   = new Date(today); soon.setDate(soon.getDate() + 30);
+
+    const cards = document.querySelectorAll('#sslList .cert-card');
+    let visible = 0;
+    cards.forEach(card => {
+      const nameMatch   = !q  || card.dataset.name.includes(q);
+      const caMatch     = !ca || card.dataset.ca === ca;
+      let statusMatch   = true;
+      if (status) {
+        const exp = new Date(card.dataset.expires);
+        if (status === 'expired')  statusMatch = exp < today;
+        if (status === 'expiring') statusMatch = exp >= today && exp <= soon;
+        if (status === 'valid')    statusMatch = exp > soon;
+      }
+      const show = nameMatch && caMatch && statusMatch;
+      card.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    document.getElementById('sslNoResults').style.display = (cards.length > 0 && visible === 0) ? '' : 'none';
+  }
+
   function isoDate(d) { return d.toISOString().split('T')[0]; }
   function addYears(n) { const d = new Date(); d.setFullYear(d.getFullYear() + n); return d; }
   function tomorrow() { const d = new Date(); d.setDate(d.getDate() + 1); return d; }

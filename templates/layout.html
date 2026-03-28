@@ -534,7 +534,7 @@
                 <polyline points="6 9 12 15 18 9"/>
               </svg>
             </div>
-            <ul id="adminSubmenu" style="list-style:none; padding:0 0 0 2.2rem; margin:0; display:{% if request.endpoint in ['activity_trail', 'admin_branding', 'admin_users'] %}block{% else %}none{% endif %};">
+            <ul id="adminSubmenu" style="list-style:none; padding:0 0 0 2.2rem; margin:0; display:{% if request.endpoint in ['activity_trail', 'admin_branding', 'admin_users', 'admin_about'] %}block{% else %}none{% endif %};">
               <li>
                 <a class="nav-link {% if request.endpoint == 'admin_users' %}active{% endif %}" href="{{ url_for('admin_users') }}" style="padding:0.4rem 0.6rem; font-size:0.82rem;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -557,6 +557,14 @@
                     <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
                   </svg>
                   Branding
+                </a>
+              </li>
+              <li>
+                <a class="nav-link {% if request.endpoint == 'admin_about' %}active{% endif %}" href="{{ url_for('admin_about') }}" style="padding:0.4rem 0.6rem; font-size:0.82rem;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  About
                 </a>
               </li>
             </ul>
