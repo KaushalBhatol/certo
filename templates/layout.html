@@ -6,6 +6,7 @@
   <title>{% if branding and branding.org_name %}{{ branding.org_name }} — CERTO{% else %}CERTO{% endif %}</title>
   <link rel="icon" type="{% if branding and branding.logo_path %}image/*{% else %}image/svg+xml{% endif %}" href="{% if branding and branding.logo_path %}{{ url_for('branding_logo') }}{% else %}{{ url_for('static', filename='favicon.svg') }}{% endif %}">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
   <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
   <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
 
@@ -23,6 +24,17 @@
       --text-muted: #64748b;
       --border-color: #e2e8f0;
     }
+
+    {% if branding and (branding.primary_color or branding.sidebar_color) %}
+    :root {
+      {% if branding.primary_color %}--accent: {{ branding.primary_color }};{% endif %}
+      {% if branding.primary_color %}--accent-hover: {{ branding.primary_color }};{% endif %}
+      {% if branding.sidebar_color %}--sidebar-bg: {{ branding.sidebar_color }};{% endif %}
+      {% if branding.sidebar_color %}--sidebar-hover: {{ branding.sidebar_color }};{% endif %}
+      {% if branding.sidebar_color %}--sidebar-active: {{ branding.sidebar_color }};{% endif %}
+      {% if branding.sidebar_color %}--sidebar-border: {{ branding.sidebar_color }};{% endif %}
+    }
+    {% endif %}
 
     * { box-sizing: border-box; }
 

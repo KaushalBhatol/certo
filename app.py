@@ -10,7 +10,7 @@ import zipfile
 from functools import wraps
 from datetime import datetime, timedelta, timezone
 import ipaddress as _ipaddress
-from flask import Flask, request, redirect, url_for, render_template, session, flash, send_file
+from flask import Flask, request, redirect, url_for, render_template, session, flash, send_file, Response
 from werkzeug.utils import secure_filename
 import pycountry
 
@@ -646,7 +646,7 @@ def reissue_rootca(name):
 
     _audit_log("Reissued Root CA", target=name)
     flash(f"Certificate for {name} reissued successfully", "success")
-    return redirect(url_for("rootca"))
+    return redirect(url_for("view_rootca", name=name))
 
 @app.route("/rootca", methods=["GET"])
 @admin_required
@@ -1089,7 +1089,7 @@ def reissue_ssl(name):
 
     _audit_log("Reissued SSL Certificate", target=name)
     flash(f"Reissued SSL certificate '{name}' successfully.", "success")
-    return redirect(url_for("ssl_page"))
+    return redirect(url_for("view_ssl", name=name))
 
 @app.route("/ssl/delete", methods=["POST"])
 @login_required
@@ -1434,7 +1434,7 @@ def reissue_rdp(name):
 
     _audit_log("Reissued RDP Certificate", target=name)
     flash(f"Reissued RDP certificate '{name}' successfully.", "success")
-    return redirect(url_for("rdp_page"))
+    return redirect(url_for("view_rdp", name=name))
 
 
 @app.route("/rdp/delete", methods=["POST"])
@@ -1503,6 +1503,7 @@ def activity_trail():
         "auth":   ["Login Success", "Logout", "Password Authentication Failed", "MFA Authentication Failed"],
         "rootca": ["Created Root CA", "Reissued Root CA", "Viewed Root CA", "Exported Root CA", "Deleted Root CA", "Imported Root CA"],
         "ssl":    ["Created SSL Certificate", "Reissued SSL Certificate", "Viewed SSL Certificate", "Exported SSL Certificate", "Deleted SSL Certificate", "Imported SSL Certificate"],
+        "rdp":    ["Created RDP Certificate", "Reissued RDP Certificate", "Viewed RDP Certificate", "Exported RDP Certificate", "Deleted RDP Certificate", "Imported RDP Certificate"],
         "mfa":    ["MFA Enabled", "MFA Disabled", "MFA Recovery Codes Reset", "Reset User MFA"],
         "user":   ["Created User", "Edited User", "Deleted User", "Enabled User", "Disabled User", "Reset User Password", "Reset User MFA", "Profile Updated", "Password Changed", "Auto-Logout Updated"],
     }
@@ -1705,9 +1706,13 @@ def admin_branding():
             logo_path = os.path.join("data", "branding", f"logo.{ext}")
             logo.save(logo_path)
 
+        primary_color = request.form.get("primary_color", "#6366f1").strip() or "#6366f1"
+        sidebar_color = request.form.get("sidebar_color", "#0f172a").strip() or "#0f172a"
         conn = get_db()
-        conn.execute("UPDATE branding SET org_name = ?, logo_path = ? WHERE id = 1",
-                     (org_name, logo_path))
+        conn.execute(
+            "UPDATE branding SET org_name = ?, logo_path = ?, primary_color = ?, sidebar_color = ? WHERE id = 1",
+            (org_name, logo_path, primary_color, sidebar_color)
+        )
         conn.commit()
         conn.close()
         _audit_log("Updated Branding", details=f"org_name={org_name}")
@@ -1715,6 +1720,22 @@ def admin_branding():
         return redirect(url_for("admin_branding"))
 
     return render_template("admin_branding.html", branding=branding)
+
+@app.route("/admin/branding/reset", methods=["POST"])
+@admin_required
+def reset_branding():
+    conn = get_db()
+    row = conn.execute("SELECT logo_path FROM branding WHERE id = 1").fetchone()
+    if row and row["logo_path"] and os.path.exists(row["logo_path"]):
+        os.remove(row["logo_path"])
+    conn.execute(
+        "UPDATE branding SET org_name = '', logo_path = '', primary_color = '#6366f1', sidebar_color = '#0f172a' WHERE id = 1"
+    )
+    conn.commit()
+    conn.close()
+    _audit_log("Reset Branding to Default")
+    flash("Branding reset to defaults.", "success")
+    return redirect(url_for("admin_branding"))
 
 @app.route("/admin/branding/remove-logo", methods=["POST"])
 @admin_required
@@ -1739,5 +1760,21 @@ def admin_about():
 def page_not_found(e):
     return render_template("404.html"), 404
 
+
+@app.route('/robots.txt')
+def robots_txt():
+    lines = [
+        "User-agent: *",
+        "Disallow: /",
+        "Crawl-delay: 10",
+    ]
+    return Response("\n".join(lines) + "\n", mimetype="text/plain")
+
+
+@app.after_request
+def add_x_robots_tag(response):
+    response.headers['X-Robots-Tag'] = 'noindex, nofollow'
+    return response
+
 if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=8080, ssl_context=(CERT_PATH, KEY_PATH))
+    app.run(debug=True, host="0.0.0.0", port=8080, ssl_context=(CERT_PATH, KEY_PATH))

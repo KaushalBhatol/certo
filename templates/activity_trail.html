@@ -30,6 +30,7 @@
         <option value="auth"  {% if filters.action_type=='auth' %}selected{% endif %}>Auth</option>
         <option value="rootca"{% if filters.action_type=='rootca' %}selected{% endif %}>Root CA</option>
         <option value="ssl"   {% if filters.action_type=='ssl' %}selected{% endif %}>SSL Certificate</option>
+        <option value="rdp"   {% if filters.action_type=='rdp' %}selected{% endif %}>RDP Certificate</option>
         <option value="mfa"   {% if filters.action_type=='mfa' %}selected{% endif %}>MFA</option>
         <option value="user"  {% if filters.action_type=='user' %}selected{% endif %}>User Management</option>
       </select>

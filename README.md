@@ -62,6 +62,17 @@
 
 ---
 
+### Prevent Public Indexing (robots / noindex)
+
+- The application is configured to discourage public search engine indexing and automated crawling:
+  - A dynamic `robots.txt` endpoint is served at `/robots.txt` which disallows all user agents and sets a short crawl delay.
+  - All HTTP responses include the `X-Robots-Tag: noindex, nofollow` header (see `app.py`).
+  - The base template includes a `<meta name="robots" content="noindex, nofollow">` tag (see `templates/layout.html`).
+- These measures help prevent accidental public indexing of internal CAs and certificates, but do not replace access controls — keep the app behind a VPN or firewall for production use.
+- To change or disable this behavior, edit the `robots.txt` handler or the `@app.after_request` hook in `app.py`, or modify `templates/layout.html` to remove the meta tag. You can also serve a custom static `robots.txt` from the `static/` directory if preferred.
+
+---
+
 ## Default Credentials
 
 On first startup, if no users exist in the database, a default admin account is created:
