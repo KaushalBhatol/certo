@@ -94,9 +94,21 @@
     }
   }
 
+  function copyToClipboard(text, onSuccess) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(onSuccess);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+      onSuccess();
+    }
+  }
+
   function copySecret() {
     const text = document.getElementById('secretCode').textContent.trim();
-    navigator.clipboard.writeText(text).then(() => {
+    copyToClipboard(text, () => {
       const icon = document.getElementById('copyIcon');
       icon.innerHTML = '<polyline points="20 6 9 17 4 12"/>';
       icon.style.stroke = '#16a34a';

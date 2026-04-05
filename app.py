@@ -28,7 +28,7 @@ def _build_eku(cert_type):
         ekus.append(_RDP_EKU_OID)
     return ekus
 
-from utils.precheck import precheckes, CERT_PATH, KEY_PATH
+from utils.precheck import precheckes
 from utils.db import get_db
 
 # Prechecks
@@ -51,11 +51,6 @@ def inject_branding():
     return {"branding": row}
 
 _SESSION_HARD_CAP = 10800  # 3 hours absolute maximum
-
-@app.before_request
-def redirect_http_to_https():
-    if not request.is_secure and not app.debug and not request.host.startswith("localhost"):
-        return redirect(request.url.replace("http://", "https://", 1), code=301)
 
 @app.before_request
 def check_session_timeout():
@@ -1801,4 +1796,4 @@ def add_x_robots_tag(response):
     return response
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8080, ssl_context=(CERT_PATH, KEY_PATH))
+    app.run(debug=False, host="0.0.0.0", port=8080)
