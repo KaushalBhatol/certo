@@ -1,14 +1,17 @@
 version: '3.8'
 
+name: certo
+
 services:
   app:
     build: .
+    image: bhatol/certo:latest
     ports:
       - "8080:8080"
     volumes:
       - certo_data:/app/data
     environment:
-      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in .env}
+      - SECRET_KEY=${SECRET_KEY:-}
       - GUNICORN_WORKERS=${GUNICORN_WORKERS:-2}
     restart: unless-stopped
     healthcheck:
