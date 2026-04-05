@@ -185,6 +185,7 @@ def home():
 
     ca_count = len(ca_rows)
     ssl_count = 0
+    rdp_count = 0
     expiring = []
     now = datetime.now(timezone.utc)
     warn_threshold = now + timedelta(days=30)
@@ -206,6 +207,23 @@ def home():
                     "expired": c.not_valid_after_utc <= now,
                 })
 
+    # Count RDP certs and find expiring ones
+    rdp_dir = os.path.join("data", "rdp")
+    if os.path.exists(rdp_dir):
+        for entry in os.listdir(rdp_dir):
+            cert_path = os.path.join(rdp_dir, entry, "cert.pem")
+            if not os.path.exists(cert_path):
+                continue
+            rdp_count += 1
+            with open(cert_path, "rb") as f:
+                c = x509.load_pem_x509_certificate(f.read())
+            if c.not_valid_after_utc <= warn_threshold:
+                expiring.append({
+                    "name": entry, "type": "RDP",
+                    "expires": c.not_valid_after_utc.strftime("%Y-%m-%d"),
+                    "expired": c.not_valid_after_utc <= now,
+                })
+
     # Check Root CA expiry too
     for row in ca_rows:
         cert_path = os.path.join(row["path"], "cert.pem")
@@ -222,8 +240,14 @@ def home():
 
     expiring.sort(key=lambda x: x["expires"])
 
+    # Get recent audit logs
+    conn = get_db()
+    recent_logs = conn.execute("SELECT timestamp, username, action, target FROM audit_logs ORDER BY timestamp DESC LIMIT 5").fetchall()
+    conn.close()
+
     return render_template("home.html",
-        ca_count=ca_count, ssl_count=ssl_count, expiring=expiring)
+        ca_count=ca_count, ssl_count=ssl_count, rdp_count=rdp_count, expiring=expiring,
+        recent_logs=recent_logs)
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
