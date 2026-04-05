@@ -521,6 +521,14 @@
               SSL Certificates
             </a>
           </li>
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint == 'rdp_page' %}active{% endif %}" href="{{ url_for('rdp_page') }}">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+              </svg>
+              RDP Certificates
+            </a>
+          </li>
           {% if session.get('role') == 'admin' %}
           <li class="nav-item" style="margin-top:0.5rem;">
             <div class="nav-link nav-group-toggle" id="adminToggle" onclick="toggleAdminMenu()" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; user-select:none;">

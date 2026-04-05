@@ -19,6 +19,15 @@ from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
+_RDP_EKU_OID = x509.ObjectIdentifier("1.3.6.1.4.1.311.54.1.2")
+
+def _build_eku(cert_type):
+    """Return EKU OID list for the given cert_type: 'ssl', 'rdp', or 'ssl_rdp'."""
+    ekus = [ExtendedKeyUsageOID.SERVER_AUTH, ExtendedKeyUsageOID.CLIENT_AUTH]
+    if cert_type in ("rdp", "ssl_rdp"):
+        ekus.append(_RDP_EKU_OID)
+    return ekus
+
 from utils.precheck import precheckes, CERT_PATH, KEY_PATH
 from utils.db import get_db
 
@@ -713,6 +722,19 @@ def export_cert(name):
         download_name=f"{name}_rootca.zip"
     )
 
+@app.route("/rootca/download-cert/<name>")
+@login_required
+def download_ca_cert(name):
+    safe_name = secure_filename(name)
+    cert_path = os.path.join("data", "rootca", safe_name, "cert.pem")
+    if not os.path.exists(cert_path):
+        flash("CA certificate not found.", "error")
+        return redirect(url_for("rootca"))
+    _audit_log("Downloaded CA Certificate", target=name)
+    return send_file(cert_path, mimetype="application/x-pem-file",
+                     as_attachment=True, download_name=f"{name}_ca.pem")
+
+
 @app.route("/rootca/delete", methods=["POST"])
 @admin_required
 def delete_rootca():
@@ -778,9 +800,12 @@ def ssl_page():
                     cert_obj = x509.load_pem_x509_certificate(f.read())
 
                 root_ca_name = None
+                cert_type = "ssl"
                 if os.path.exists(meta_path):
                     with open(meta_path, "r") as f:
-                        root_ca_name = f.read().strip()
+                        lines = f.read().strip().splitlines()
+                    root_ca_name = lines[0] if lines else None
+                    cert_type = lines[1] if len(lines) > 1 else "ssl"
 
                 details = _cert_details(cert_obj)
                 certs.append({
@@ -788,6 +813,7 @@ def ssl_page():
                     "created": cert_obj.not_valid_before_utc.strftime("%Y-%m-%d"),
                     "expires": cert_obj.not_valid_after_utc.strftime("%Y-%m-%d"),
                     "root_ca": root_ca_name or "Unknown",
+                    "cert_type": cert_type,
                     "details": details,
                 })
 
@@ -810,7 +836,7 @@ def view_ssl(name):
     root_ca = ""
     if os.path.exists(meta_path):
         with open(meta_path) as f:
-            root_ca = f.read().strip()
+            root_ca = f.read().strip().splitlines()[0]
     details = _cert_details(cert_obj)
     details["root_ca"] = root_ca
     pem_files = {"Certificate": open(cert_path).read()}
@@ -818,9 +844,11 @@ def view_ssl(name):
         pem_files["Private Key"] = open(key_path).read()
     if os.path.exists(fullchain_path):
         pem_files["Full Chain"] = open(fullchain_path).read()
+    ca_cert_url = url_for("download_ca_cert", name=root_ca) if root_ca else None
     _audit_log("Viewed SSL Certificate", target=name, details=", ".join(pem_files.keys()))
     return render_template("cert_detail.html", name=name, cert_type="SSL Certificate",
                            details=details, pem_files=pem_files,
+                           ca_cert_url=ca_cert_url,
                            back_url=url_for("ssl_page"),
                            export_url=url_for("export_ssl", name=name))
 
@@ -832,7 +860,6 @@ def create_ssl():
     days = _days_until(request.form.get("expiry_date"), fallback=365)
     selected_ca = request.form.get("root_ca")
     sans_raw = request.form.get("sans", "")
-
     if not all([name, common_name, selected_ca]):
         flash("All fields are required.", "error")
         return redirect(url_for("ssl_page"))
@@ -910,10 +937,7 @@ def create_ssl():
             key_cert_sign=False, crl_sign=False,
             encipher_only=False, decipher_only=False
         ), critical=True) \
-        .add_extension(x509.ExtendedKeyUsage([
-            ExtendedKeyUsageOID.SERVER_AUTH,
-            ExtendedKeyUsageOID.CLIENT_AUTH,
-        ]), critical=False) \
+        .add_extension(x509.ExtendedKeyUsage(_build_eku("ssl")), critical=False) \
         .add_extension(x509.SubjectKeyIdentifier.from_public_key(ssl_key.public_key()), critical=False) \
         .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False) \
         .sign(ca_key, hashes.SHA256())
@@ -938,7 +962,6 @@ def create_ssl():
         f.write(cert.public_bytes(serialization.Encoding.PEM))
         f.write(ca_cert.public_bytes(serialization.Encoding.PEM))
 
-    # Save Root CA name used for signing
     meta_path = os.path.join(ssl_dir, "meta.txt")
     with open(meta_path, "w") as f:
         f.write(selected_ca)
@@ -1004,7 +1027,9 @@ def reissue_ssl(name):
         ssl_key = serialization.load_pem_private_key(f.read(), password=None)
 
     with open(meta_path, "r") as f:
-        root_ca = f.read().strip()
+        lines = f.read().strip().splitlines()
+    root_ca = lines[0] if lines else ""
+    cert_type = lines[1] if len(lines) > 1 else "ssl"
 
     ca_dir = os.path.join("data", "rootca", secure_filename(root_ca))
     ca_cert_path = os.path.join(ca_dir, "cert.pem")
@@ -1048,10 +1073,7 @@ def reissue_ssl(name):
             key_cert_sign=False, crl_sign=False,
             encipher_only=False, decipher_only=False
         ), critical=True) \
-        .add_extension(x509.ExtendedKeyUsage([
-            ExtendedKeyUsageOID.SERVER_AUTH,
-            ExtendedKeyUsageOID.CLIENT_AUTH,
-        ]), critical=False) \
+        .add_extension(x509.ExtendedKeyUsage(_build_eku(cert_type)), critical=False) \
         .add_extension(x509.SubjectKeyIdentifier.from_public_key(ssl_key.public_key()), critical=False) \
         .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False) \
         .sign(ca_key, hashes.SHA256())
@@ -1114,6 +1136,354 @@ def import_ssl():
     _audit_log("Imported SSL Certificate", target=name, details=f"Root CA: {root_ca}")
     flash(f"SSL certificate '{name}' imported.", "success")
     return redirect(url_for("ssl_page"))
+
+# ---------- RDP CERTIFICATE ROUTES ----------
+
+@app.route("/rdp", methods=["GET"])
+@login_required
+def rdp_page():
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM root_cas").fetchall()
+    conn.close()
+
+    def _attr(name_obj, oid, default=""):
+        attrs = name_obj.get_attributes_for_oid(oid)
+        return attrs[0].value if attrs else default
+
+    rootcas = []
+    for row in rows:
+        ca_cert_path = os.path.join(row["path"], "cert.pem")
+        org = country = state = locality = ou = ""
+        if os.path.exists(ca_cert_path):
+            with open(ca_cert_path, "rb") as f:
+                ca_cert_obj = x509.load_pem_x509_certificate(f.read())
+            org      = _attr(ca_cert_obj.subject, NameOID.ORGANIZATION_NAME)
+            country  = _attr(ca_cert_obj.subject, NameOID.COUNTRY_NAME)
+            state    = _attr(ca_cert_obj.subject, NameOID.STATE_OR_PROVINCE_NAME)
+            locality = _attr(ca_cert_obj.subject, NameOID.LOCALITY_NAME)
+            ou       = _attr(ca_cert_obj.subject, NameOID.ORGANIZATIONAL_UNIT_NAME)
+        rootcas.append({"name": row["name"], "org": org, "country": country,
+                        "state": state, "locality": locality, "ou": ou})
+
+    certs = []
+    rdp_dir = os.path.join("data", "rdp")
+    if os.path.exists(rdp_dir):
+        for name in os.listdir(rdp_dir):
+            folder    = os.path.join(rdp_dir, name)
+            cert_path = os.path.join(folder, "cert.pem")
+            meta_path = os.path.join(folder, "meta.txt")
+            if os.path.exists(cert_path):
+                with open(cert_path, "rb") as f:
+                    cert_obj = x509.load_pem_x509_certificate(f.read())
+                root_ca_name = None
+                if os.path.exists(meta_path):
+                    with open(meta_path, "r") as f:
+                        root_ca_name = f.read().strip()
+                certs.append({
+                    "name":    name,
+                    "created": cert_obj.not_valid_before_utc.strftime("%Y-%m-%d"),
+                    "expires": cert_obj.not_valid_after_utc.strftime("%Y-%m-%d"),
+                    "root_ca": root_ca_name or "Unknown",
+                    "details": _cert_details(cert_obj),
+                })
+
+    return render_template("rdp.html", rootcas=rootcas, certs=certs)
+
+
+@app.route("/rdp/create", methods=["POST"])
+@login_required
+def create_rdp():
+    name        = request.form.get("name")
+    common_name = request.form.get("common_name")
+    days        = _days_until(request.form.get("expiry_date"), fallback=365)
+    selected_ca = request.form.get("root_ca")
+    sans_raw    = request.form.get("sans", "")
+
+    if not all([name, common_name, selected_ca]):
+        flash("All fields are required.", "error")
+        return redirect(url_for("rdp_page"))
+
+    ca_dir  = os.path.join("data", "rootca", secure_filename(selected_ca))
+    rdp_dir = os.path.join("data", "rdp", secure_filename(name))
+    os.makedirs(rdp_dir, exist_ok=True)
+
+    ca_cert_path = os.path.join(ca_dir, "cert.pem")
+    ca_key_path  = os.path.join(ca_dir, "key.pem")
+
+    if not os.path.exists(ca_cert_path) or not os.path.exists(ca_key_path):
+        flash("Selected Root CA not found.", "error")
+        return redirect(url_for("rdp_page"))
+
+    with open(ca_cert_path, "rb") as f:
+        ca_cert = x509.load_pem_x509_certificate(f.read())
+    with open(ca_key_path, "rb") as f:
+        ca_key = serialization.load_pem_private_key(f.read(), password=None)
+
+    def _attr(name_obj, oid, default=""):
+        attrs = name_obj.get_attributes_for_oid(oid)
+        return attrs[0].value if attrs else default
+
+    country  = _attr(ca_cert.subject, NameOID.COUNTRY_NAME, "US")
+    state    = _attr(ca_cert.subject, NameOID.STATE_OR_PROVINCE_NAME)
+    locality = _attr(ca_cert.subject, NameOID.LOCALITY_NAME)
+    org      = _attr(ca_cert.subject, NameOID.ORGANIZATION_NAME, "Certo")
+    ou       = _attr(ca_cert.subject, NameOID.ORGANIZATIONAL_UNIT_NAME)
+
+    rdp_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    name_attrs = [x509.NameAttribute(NameOID.COUNTRY_NAME, country)]
+    if state:
+        name_attrs.append(x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, state))
+    if locality:
+        name_attrs.append(x509.NameAttribute(NameOID.LOCALITY_NAME, locality))
+    name_attrs.append(x509.NameAttribute(NameOID.ORGANIZATION_NAME, org))
+    if ou:
+        name_attrs.append(x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, ou))
+    name_attrs.append(x509.NameAttribute(NameOID.COMMON_NAME, common_name))
+    subject = x509.Name(name_attrs)
+
+    san_entries = []
+    seen = set()
+    for entry in ([common_name] + [s.strip() for s in sans_raw.replace(",", "\n").splitlines() if s.strip()]):
+        if entry in seen:
+            continue
+        seen.add(entry)
+        try:
+            san_entries.append(x509.IPAddress(_ipaddress.ip_address(entry)))
+        except ValueError:
+            san_entries.append(x509.DNSName(entry))
+
+    now  = datetime.now(timezone.utc)
+    cert = x509.CertificateBuilder() \
+        .subject_name(subject) \
+        .issuer_name(ca_cert.subject) \
+        .public_key(rdp_key.public_key()) \
+        .serial_number(x509.random_serial_number()) \
+        .not_valid_before(now) \
+        .not_valid_after(now + timedelta(days=days)) \
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True) \
+        .add_extension(x509.SubjectAlternativeName(san_entries), critical=False) \
+        .add_extension(x509.KeyUsage(
+            digital_signature=True, content_commitment=False, key_encipherment=True,
+            data_encipherment=False, key_agreement=False,
+            key_cert_sign=False, crl_sign=False,
+            encipher_only=False, decipher_only=False
+        ), critical=True) \
+        .add_extension(x509.ExtendedKeyUsage(_build_eku("rdp")), critical=False) \
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(rdp_key.public_key()), critical=False) \
+        .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False) \
+        .sign(ca_key, hashes.SHA256())
+
+    with open(os.path.join(rdp_dir, "cert.pem"), "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+    with open(os.path.join(rdp_dir, "key.pem"), "wb") as f:
+        f.write(rdp_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption()
+        ))
+    with open(os.path.join(rdp_dir, "fullchain.pem"), "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+        f.write(ca_cert.public_bytes(serialization.Encoding.PEM))
+    with open(os.path.join(rdp_dir, "meta.txt"), "w") as f:
+        f.write(selected_ca)
+
+    _audit_log("Created RDP Certificate", target=name)
+    flash(f"RDP certificate '{name}' created successfully.", "success")
+    return redirect(url_for("rdp_page"))
+
+
+@app.route("/rdp/view/<name>")
+@login_required
+def view_rdp(name):
+    safe_name      = secure_filename(name)
+    rdp_dir        = os.path.join("data", "rdp", safe_name)
+    cert_path      = os.path.join(rdp_dir, "cert.pem")
+    key_path       = os.path.join(rdp_dir, "key.pem")
+    fullchain_path = os.path.join(rdp_dir, "fullchain.pem")
+    meta_path      = os.path.join(rdp_dir, "meta.txt")
+
+    if not os.path.exists(cert_path):
+        flash("Certificate not found.", "error")
+        return redirect(url_for("rdp_page"))
+
+    with open(cert_path, "rb") as f:
+        cert_obj = x509.load_pem_x509_certificate(f.read())
+
+    root_ca = ""
+    if os.path.exists(meta_path):
+        with open(meta_path) as f:
+            root_ca = f.read().strip()
+
+    details = _cert_details(cert_obj)
+    details["root_ca"] = root_ca
+
+    pem_files = {"Certificate": open(cert_path).read()}
+    if os.path.exists(key_path):
+        pem_files["Private Key"] = open(key_path).read()
+    if os.path.exists(fullchain_path):
+        pem_files["Full Chain"] = open(fullchain_path).read()
+
+    ca_cert_url = url_for("download_ca_cert", name=root_ca) if root_ca else None
+    _audit_log("Viewed RDP Certificate", target=name, details=", ".join(pem_files.keys()))
+    return render_template("cert_detail.html", name=name, cert_type="RDP Certificate",
+                           details=details, pem_files=pem_files,
+                           ca_cert_url=ca_cert_url,
+                           back_url=url_for("rdp_page"),
+                           export_url=url_for("export_rdp", name=name))
+
+
+@app.route("/rdp/export/<name>")
+@login_required
+def export_rdp(name):
+    safe_name      = secure_filename(name)
+    rdp_dir        = os.path.join("data", "rdp", safe_name)
+    cert_path      = os.path.join(rdp_dir, "cert.pem")
+    key_path       = os.path.join(rdp_dir, "key.pem")
+    fullchain_path = os.path.join(rdp_dir, "fullchain.pem")
+    meta_path      = os.path.join(rdp_dir, "meta.txt")
+
+    if not os.path.exists(cert_path) or not os.path.exists(key_path):
+        flash("RDP certificate files not found.", "error")
+        return redirect(url_for("rdp_page"))
+
+    _audit_log("Exported RDP Certificate", target=name)
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zipf:
+        zipf.write(cert_path, arcname=f"{name}_cert.pem")
+        zipf.write(key_path,  arcname=f"{name}_key.pem")
+        if os.path.exists(fullchain_path):
+            zipf.write(fullchain_path, arcname=f"{name}_fullchain.pem")
+        if os.path.exists(meta_path):
+            zipf.write(meta_path, arcname=f"{name}_meta.txt")
+    zip_buffer.seek(0)
+
+    return send_file(zip_buffer, mimetype="application/zip", as_attachment=True,
+                     download_name=f"{name}_rdp_export.zip")
+
+
+@app.route("/rdp/reissue/<name>", methods=["POST"])
+@login_required
+def reissue_rdp(name):
+    safe_name = secure_filename(name)
+    rdp_dir   = os.path.join("data", "rdp", safe_name)
+    days      = _days_until(request.form.get("expiry_date"), fallback=365)
+
+    key_path  = os.path.join(rdp_dir, "key.pem")
+    cert_path = os.path.join(rdp_dir, "cert.pem")
+    meta_path = os.path.join(rdp_dir, "meta.txt")
+
+    if not all([os.path.exists(p) for p in [key_path, cert_path, meta_path]]):
+        flash("Missing key or meta information.", "error")
+        return redirect(url_for("rdp_page"))
+
+    with open(key_path, "rb") as f:
+        rdp_key = serialization.load_pem_private_key(f.read(), password=None)
+    with open(meta_path, "r") as f:
+        root_ca = f.read().strip()
+
+    ca_dir       = os.path.join("data", "rootca", secure_filename(root_ca))
+    ca_cert_path = os.path.join(ca_dir, "cert.pem")
+    ca_key_path  = os.path.join(ca_dir, "key.pem")
+
+    if not os.path.exists(ca_cert_path) or not os.path.exists(ca_key_path):
+        flash("Root CA used for signing not found.", "error")
+        return redirect(url_for("rdp_page"))
+
+    with open(ca_cert_path, "rb") as f:
+        ca_cert = x509.load_pem_x509_certificate(f.read())
+    with open(ca_key_path, "rb") as f:
+        ca_key = serialization.load_pem_private_key(f.read(), password=None)
+
+    with open(cert_path, "rb") as f:
+        existing_cert = x509.load_pem_x509_certificate(f.read())
+
+    try:
+        existing_san = existing_cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+    except x509.ExtensionNotFound:
+        existing_san = x509.SubjectAlternativeName([x509.DNSName(
+            existing_cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
+        )])
+
+    now  = datetime.now(timezone.utc)
+    cert = x509.CertificateBuilder() \
+        .subject_name(existing_cert.subject) \
+        .issuer_name(ca_cert.subject) \
+        .public_key(rdp_key.public_key()) \
+        .serial_number(x509.random_serial_number()) \
+        .not_valid_before(now) \
+        .not_valid_after(now + timedelta(days=days)) \
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True) \
+        .add_extension(existing_san, critical=False) \
+        .add_extension(x509.KeyUsage(
+            digital_signature=True, content_commitment=False, key_encipherment=True,
+            data_encipherment=False, key_agreement=False,
+            key_cert_sign=False, crl_sign=False,
+            encipher_only=False, decipher_only=False
+        ), critical=True) \
+        .add_extension(x509.ExtendedKeyUsage(_build_eku("rdp")), critical=False) \
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(rdp_key.public_key()), critical=False) \
+        .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False) \
+        .sign(ca_key, hashes.SHA256())
+
+    with open(cert_path, "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+    with open(os.path.join(rdp_dir, "fullchain.pem"), "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+        f.write(ca_cert.public_bytes(serialization.Encoding.PEM))
+
+    _audit_log("Reissued RDP Certificate", target=name)
+    flash(f"Reissued RDP certificate '{name}' successfully.", "success")
+    return redirect(url_for("rdp_page"))
+
+
+@app.route("/rdp/delete", methods=["POST"])
+@login_required
+def delete_rdp():
+    name         = request.form.get("name")
+    confirm_name = request.form.get("confirm_name")
+
+    if name != confirm_name:
+        flash("Confirmation name does not match.", "error")
+        return redirect(url_for("rdp_page"))
+
+    rdp_path = os.path.join("data", "rdp", secure_filename(name))
+    if os.path.exists(rdp_path):
+        import shutil
+        shutil.rmtree(rdp_path)
+        _audit_log("Deleted RDP Certificate", target=name)
+        flash(f"Deleted RDP certificate: {name}", "success")
+    else:
+        flash("RDP certificate not found.", "error")
+
+    return redirect(url_for("rdp_page"))
+
+
+@app.route("/rdp/import", methods=["POST"])
+@login_required
+def import_rdp():
+    name    = request.form.get("name")
+    root_ca = request.form.get("root_ca")
+    cert    = request.files.get("cert")
+    key     = request.files.get("key")
+
+    if not all([name, root_ca, cert, key]):
+        flash("All fields are required.", "error")
+        return redirect(url_for("rdp_page"))
+
+    save_dir = os.path.join("data", "rdp", secure_filename(name))
+    os.makedirs(save_dir, exist_ok=True)
+
+    cert.save(os.path.join(save_dir, "cert.pem"))
+    key.save(os.path.join(save_dir, "key.pem"))
+
+    with open(os.path.join(save_dir, "meta.txt"), "w") as f:
+        f.write(root_ca)
+
+    _audit_log("Imported RDP Certificate", target=name, details=f"Root CA: {root_ca}")
+    flash(f"RDP certificate '{name}' imported.", "success")
+    return redirect(url_for("rdp_page"))
+
 
 @app.route("/admin/activity-trail")
 @admin_required
