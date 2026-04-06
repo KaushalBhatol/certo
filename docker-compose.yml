@@ -1,18 +1,21 @@
 version: '3.8'
 
+name: certo
+
 services:
   app:
     build: .
+    image: bhatol/certo:latest
     ports:
       - "8080:8080"
     volumes:
       - certo_data:/app/data
     environment:
-      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in .env}
+      - SECRET_KEY=${SECRET_KEY:-}
       - GUNICORN_WORKERS=${GUNICORN_WORKERS:-2}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request, ssl; ctx=ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE; urllib.request.urlopen('https://localhost:8080/', context=ctx, timeout=5)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3

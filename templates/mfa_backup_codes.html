@@ -62,8 +62,20 @@
 <script>
   const codes = {{ codes | tojson }};
 
+  function copyToClipboard(text, onSuccess) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(onSuccess);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+      onSuccess();
+    }
+  }
+
   function copyCodes() {
-    navigator.clipboard.writeText(codes.join('\n'));
+    copyToClipboard(codes.join('\n'), () => {});
   }
 
   function downloadCodes() {

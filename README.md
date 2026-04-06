@@ -4,6 +4,10 @@
 
 > Designed for internal teams, developers, and DevOps who need a lightweight, private CA they control.
 
+[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-bhatol%2Fcerto-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/bhatol/certo)
+[![GitHub](https://img.shields.io/badge/GitHub-KaushalBhatol%2Fcerto-181717?logo=github&logoColor=white)](https://github.com/KaushalBhatol/certo)
+[![Bhatol](https://img.shields.io/badge/Bhatol-bhatol.com-FF6B35?logo=firefox&logoColor=white)](https://bhatol.com/)
+
 ---
 
 ## Project Info
@@ -57,8 +61,19 @@
 - SQLite storage for users, Root CA index, audit logs, and MFA backup codes
 - Certificate files stored on disk (`data/rootca/`, `data/ssl/`)
 - Fully air-gap compatible — no CDN dependencies, all assets bundled locally
-- HTTPS-only (self-signed cert auto-generated on first run)
+- HTTP server (put Nginx/Caddy/Traefik in front for HTTPS in production)
 - Production-ready Docker setup with Gunicorn
+
+---
+
+### Prevent Public Indexing (robots / noindex)
+
+- The application is configured to discourage public search engine indexing and automated crawling:
+  - A dynamic `robots.txt` endpoint is served at `/robots.txt` which disallows all user agents and sets a short crawl delay.
+  - All HTTP responses include the `X-Robots-Tag: noindex, nofollow` header (see `app.py`).
+  - The base template includes a `<meta name="robots" content="noindex, nofollow">` tag (see `templates/layout.html`).
+- These measures help prevent accidental public indexing of internal CAs and certificates, but do not replace access controls — keep the app behind a VPN or firewall for production use.
+- To change or disable this behavior, edit the `robots.txt` handler or the `@app.after_request` hook in `app.py`, or modify `templates/layout.html` to remove the meta tag. You can also serve a custom static `robots.txt` from the `static/` directory if preferred.
 
 ---
 
@@ -76,38 +91,44 @@ On first startup, if no users exist in the database, a default admin account is 
 
 ## Production Deployment (Docker)
 
-### 1. Generate your `.env` file
+### Option A — Docker Compose (recommended)
 
-```bash
-./generate_env.sh
-```
-
-This creates a `.env` with a cryptographically random `SECRET_KEY`. Never commit this file.
-
-### 2. Build and start
+No setup required. Just run:
 
 ```bash
 docker-compose up -d
 ```
 
-### 3. Access
+Then open **http://&lt;your-host&gt;:8080** in your browser.
 
-```
-https://<your-host>:8080
+A secure `SECRET_KEY` is automatically generated on first start and persisted in the data volume — sessions survive container restarts.
+
+To use a custom key, create a `.env` file before starting:
+
+```env
+SECRET_KEY=your-long-random-string-here
 ```
 
-The app serves HTTPS with a self-signed certificate generated on first run. Your browser will show a security warning — this is expected. Import the Root CA you create into your trust store to resolve it.
+### Option B — Docker Run
+
+```bash
+docker run -d \
+  -p 8080:8080 \
+  --name certo \
+  -v certo_data:/app/data \
+  bhatol/certo:latest
+```
 
 ### Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `SECRET_KEY` | Yes | Flask session signing key — must be a long random string |
-| `GUNICORN_WORKERS` | No | Number of worker processes (default: `2`) |
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SECRET_KEY` | No | Auto-generated | Flask session signing key. Auto-created and persisted in the data volume if not set. |
+| `GUNICORN_WORKERS` | No | `2` | Number of Gunicorn worker processes |
 
 ### Data Persistence
 
-All data is stored in the `certo_data` Docker named volume mounted at `/app/data`. Certificates, the SQLite database, and the app's own TLS cert all live here. Back up this volume to preserve your CA and certificate data.
+All data is stored in the `certo_data` Docker named volume at `/app/data` — the SQLite database, Root CA files, and SSL certificate files. Back up this volume to preserve your data.
 
 ```bash
 # Backup
@@ -122,12 +143,11 @@ docker run --rm -v certo_data:/data -v $(pwd):/backup alpine \
 ### Upgrading
 
 ```bash
-docker-compose pull   # if using a registry
-docker-compose build  # if building locally
+docker-compose pull
 docker-compose up -d
 ```
 
-Data is in a named volume and is not affected by image rebuilds.
+Data is in a named volume and is not affected by image updates.
 
 ---
 
@@ -146,7 +166,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-App runs at `https://0.0.0.0:8080`. Accept the browser warning for the self-signed cert.
+App runs at `http://0.0.0.0:8080`.
 
 #### Windows (PowerShell)
 
@@ -173,7 +193,7 @@ certo/
 │   └── ssl/                # SSL cert, key, fullchain, and meta files
 ├── Dockerfile
 ├── docker-compose.yml
-├── docker-entrypoint.sh    # Runs precheck then starts Gunicorn with SSL
-├── generate_env.sh         # Generates .env with a secure SECRET_KEY
+├── docker-entrypoint.sh    # Runs precheck then starts Gunicorn
+├── generate_env.sh         # Optional: generates .env with a custom SECRET_KEY
 └── requirements.txt
 ```

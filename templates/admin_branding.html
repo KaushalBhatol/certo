@@ -72,15 +72,63 @@
 
   </div>
 
-  <div style="margin-top:1.25rem;">
+  <!-- Theme Colors -->
+  <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:1.5rem; margin-top:1.25rem;">
+    <div style="font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:#64748b; margin-bottom:1rem;">Theme Colors</div>
+    <div style="display:flex; gap:2.5rem; flex-wrap:wrap; align-items:flex-start;">
+
+      <div>
+        <label style="display:block; font-size:0.82rem; font-weight:600; color:#475569; margin-bottom:0.4rem;">Accent Color</label>
+        <div style="display:flex; align-items:center; gap:0.75rem;">
+          <input type="color" name="primary_color" id="primaryColorInput"
+                 value="{{ branding.primary_color if branding and branding.primary_color else '#6366f1' }}"
+                 style="width:44px; height:36px; border:1px solid #e2e8f0; border-radius:6px; padding:2px; cursor:pointer;"
+                 oninput="document.getElementById('primaryColorHex').value=this.value; document.getElementById('accentPreview').style.background=this.value;">
+          <input type="text" id="primaryColorHex"
+                 value="{{ branding.primary_color if branding and branding.primary_color else '#6366f1' }}"
+                 maxlength="7" style="width:80px; padding:0.4rem 0.5rem; border:1px solid #e2e8f0; border-radius:6px; font-size:0.82rem; font-family:monospace;"
+                 oninput="if(this.value.match(/^#[0-9a-fA-F]{6}$/)) document.getElementById('primaryColorInput').value=this.value;">
+          <div id="accentPreview" style="width:64px; height:34px; border-radius:6px; background:{{ branding.primary_color if branding and branding.primary_color else '#6366f1' }}; border:1px solid #e2e8f0;"></div>
+        </div>
+        <p style="font-size:0.75rem; color:#94a3b8; margin-top:0.35rem; margin-bottom:0;">Used for buttons and highlighted elements.</p>
+      </div>
+
+      <div>
+        <label style="display:block; font-size:0.82rem; font-weight:600; color:#475569; margin-bottom:0.4rem;">Sidebar Color</label>
+        <div style="display:flex; align-items:center; gap:0.75rem;">
+          <input type="color" name="sidebar_color" id="sidebarColorInput"
+                 value="{{ branding.sidebar_color if branding and branding.sidebar_color else '#0f172a' }}"
+                 style="width:44px; height:36px; border:1px solid #e2e8f0; border-radius:6px; padding:2px; cursor:pointer;"
+                 oninput="document.getElementById('sidebarColorHex').value=this.value; document.getElementById('sidebarPreview').style.background=this.value;">
+          <input type="text" id="sidebarColorHex"
+                 value="{{ branding.sidebar_color if branding and branding.sidebar_color else '#0f172a' }}"
+                 maxlength="7" style="width:80px; padding:0.4rem 0.5rem; border:1px solid #e2e8f0; border-radius:6px; font-size:0.82rem; font-family:monospace;"
+                 oninput="if(this.value.match(/^#[0-9a-fA-F]{6}$/)) document.getElementById('sidebarColorInput').value=this.value;">
+          <div id="sidebarPreview" style="width:64px; height:34px; border-radius:6px; background:{{ branding.sidebar_color if branding and branding.sidebar_color else '#0f172a' }}; border:1px solid #e2e8f0;"></div>
+        </div>
+        <p style="font-size:0.75rem; color:#94a3b8; margin-top:0.35rem; margin-bottom:0;">Used for the sidebar background.</p>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="margin-top:1.25rem; display:flex; align-items:center; gap:0.75rem;">
     <button type="submit" style="display:inline-flex; align-items:center; gap:0.5rem; background:#6366f1; color:#fff; border:none; border-radius:8px; padding:0.6rem 1.4rem; font-size:0.875rem; font-weight:600; cursor:pointer; box-shadow:0 2px 8px rgba(99,102,241,0.35); transition:background 0.15s;" onmouseover="this.style.background='#4f46e5'" onmouseout="this.style.background='#6366f1'">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
       </svg>
       Save Branding
     </button>
+    <button type="button" onclick="document.getElementById('resetBrandingForm').submit()" style="display:inline-flex; align-items:center; gap:0.4rem; background:none; border:1px solid #e2e8f0; border-radius:8px; padding:0.6rem 1.4rem; font-size:0.875rem; font-weight:600; color:#64748b; cursor:pointer; transition:border-color 0.15s;" onmouseover="this.style.borderColor='#94a3b8'" onmouseout="this.style.borderColor='#e2e8f0'">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+      </svg>
+      Reset to Default
+    </button>
   </div>
 </form>
+
+<form id="resetBrandingForm" method="POST" action="{{ url_for('reset_branding') }}" style="display:none;"></form>
 
 <script>
 function previewLogo(input) {

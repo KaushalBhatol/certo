@@ -69,10 +69,20 @@ def init_db():
     CREATE TABLE IF NOT EXISTS branding (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         org_name TEXT DEFAULT '',
-        logo_path TEXT DEFAULT ''
+        logo_path TEXT DEFAULT '',
+        primary_color TEXT DEFAULT '#6366f1',
+        sidebar_color TEXT DEFAULT '#0f172a'
     )
     """)
     cursor.execute("INSERT OR IGNORE INTO branding (id, org_name, logo_path) VALUES (1, '', '')")
+    try:
+        cursor.execute("ALTER TABLE branding ADD COLUMN primary_color TEXT DEFAULT '#6366f1'")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE branding ADD COLUMN sidebar_color TEXT DEFAULT '#0f172a'")
+    except Exception:
+        pass
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS audit_logs (
